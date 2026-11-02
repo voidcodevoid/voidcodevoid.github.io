@@ -1,0 +1,2302 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>БЕЗЫСХОДНОСТЬ</title>
+<style>
+    * {
+        box-sizing: border-box;
+        user-select: none;
+        margin: 0;
+        padding: 0;
+    }
+    body, html {
+        width: 100%;
+        height: 100%;
+        background-color: #000;
+        overflow: hidden;
+        font-family: 'Courier New', Courier, monospace;
+        color: #b00;
+    }
+    #game-container {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #000;
+    }
+    canvas {
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+        display: block;
+    }
+    #overlay {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: radial-gradient(circle, rgba(22,0,0,0.88) 0%, rgba(0,0,0,0.98) 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 20px;
+        z-index: 10;
+    }
+    h1 {
+        font-size: 3.3rem;
+        letter-spacing: 6px;
+        color: #a00000;
+        text-shadow: 0 0 25px #f00, 0 5px 8px #000;
+        margin-bottom: 10px;
+        animation: pulse 3.5s infinite;
+    }
+    .level-badge {
+        font-size: 1.1rem;
+        color: #e55;
+        background: rgba(60, 0, 0, 0.6);
+        border: 1px solid #800;
+        padding: 4px 16px;
+        margin-bottom: 14px;
+        letter-spacing: 2px;
+    }
+    .subtitle {
+        font-size: 1.02rem;
+        color: #999;
+        max-width: 720px;
+        line-height: 1.55;
+        margin-bottom: 20px;
+    }
+    .controls-box {
+        border: 1px solid #4a0000;
+        background: rgba(12, 0, 0, 0.85);
+        padding: 14px 26px;
+        color: #aaa;
+        font-size: 0.9rem;
+        line-height: 1.8;
+        margin-bottom: 18px;
+        box-shadow: inset 0 0 20px #000, 0 0 15px rgba(100,0,0,0.25);
+        text-align: left;
+    }
+    .controls-box span {
+        color: #e44;
+        font-weight: bold;
+    }
+    .settings-row {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 22px;
+        color: #ccc;
+        font-size: 0.95rem;
+        background: rgba(25, 0, 0, 0.7);
+        padding: 8px 20px;
+        border: 1px solid #500;
+    }
+    input[type="range"] {
+        accent-color: #b00;
+        cursor: pointer;
+        width: 160px;
+    }
+    .start-btn {
+        padding: 14px 40px;
+        font-size: 1.3rem;
+        font-family: 'Courier New', Courier, monospace;
+        font-weight: bold;
+        background: #300000;
+        color: #e00;
+        border: 2px solid #800;
+        cursor: pointer;
+        letter-spacing: 3px;
+        transition: 0.2s;
+        box-shadow: 0 0 25px rgba(180,0,0,0.45);
+    }
+    .start-btn:hover {
+        background: #700;
+        color: #fff;
+        box-shadow: 0 0 40px rgba(255,0,0,0.85);
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 0.85; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.02); }
+    }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="screen" width="480" height="300"></canvas>
+    <div id="overlay">
+        <div class="level-badge" id="level-badge">КАМПАНИЯ // 4 КРУГА АДА</div>
+        <h1 id="title-text">БЕЗЫСХОДНОСТЬ</h1>
+        <div class="subtitle" id="desc-text">
+            Впереди — 4 этажа спуска в чрево собственного кошмара: от ржавого Парадного Входа и Затопленных Катакомб до Расстрельного Зала и Сердцевины Вины. Каждый следующий уровень темнее, а твари — быстрее и беспощаднее.<br><br>
+            Свет фонарика — твоя единственная жизнь.
+        </div>
+        <div class="controls-box" id="controls-box">
+            <span>[W, A, S, D]</span> — Движение &nbsp;|&nbsp; <span>[МЫШЬ]</span> — 3D-обзор (Вверх/Вниз/В стороны)<br>
+            <span>[ЛКМ]</span> — Огонь &nbsp;|&nbsp; <span>[F]</span> или <span>[ПКМ]</span> — Фонарик &nbsp;|&nbsp; <span>[R]</span> — Динамо-зарядка<br>
+            <span>[E]</span> или <span>[ПРОБЕЛ]</span> — Двери / Рубильники / Тайники / Лифт выхода<br>
+            <span>[1 - 5]</span> или <span>[КОЛЕСИКО]</span> — Оружие &nbsp;|&nbsp; <span>[TAB / M]</span> — Карта &nbsp;|&nbsp; <span>[ [ / ] ]</span> — Чувствительность
+        </div>
+        <div class="settings-row">
+            <label for="sens-slider">Чувствительность мыши:</label>
+            <input type="range" id="sens-slider" min="0.5" max="5.0" step="0.1" value="2.2">
+            <span id="sens-val">2.2</span>
+        </div>
+        <button class="start-btn" id="start-btn">НАЧАТЬ СПУСК (УРОВЕНЬ 01)</button>
+    </div>
+</div>
+
+<script>
+"use strict";
+
+// ==========================================
+// 1. ЗВУКОВОЙ ДВИЖОК С АДАПТИВНЫМ ЭМБИЕНТОМ
+// ==========================================
+class HorrorAudio {
+    constructor() {
+        this.ctx = null;
+        this.noiseBuffer = null;
+        this.ambientStarted = false;
+        this.osc1 = null;
+        this.osc2 = null;
+        this.filter = null;
+    }
+
+    init() {
+        if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+            this.createNoiseBuffer();
+        }
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+        if (!this.ambientStarted) {
+            this.startDarkAmbient();
+            this.ambientStarted = true;
+        }
+    }
+
+    createNoiseBuffer() {
+        const len = this.ctx.sampleRate * 2;
+        this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const data = this.noiseBuffer.getChannelData(0);
+        for (let i = 0; i < len; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+    }
+
+    startDarkAmbient() {
+        this.osc1 = this.ctx.createOscillator();
+        this.osc2 = this.ctx.createOscillator();
+        const sub = this.ctx.createOscillator();
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+        this.filter = this.ctx.createBiquadFilter();
+        const master = this.ctx.createGain();
+
+        this.osc1.type = 'sawtooth';
+        this.osc1.frequency.value = 35.0;
+        this.osc2.type = 'sawtooth';
+        this.osc2.frequency.value = 36.6;
+        sub.type = 'sine';
+        sub.frequency.value = 27.5;
+
+        lfo.type = 'sine';
+        lfo.frequency.value = 0.1;
+        lfoGain.gain.value = 60;
+
+        this.filter.type = 'lowpass';
+        this.filter.frequency.value = 95;
+        this.filter.Q.value = 7;
+
+        master.gain.value = 0.21;
+
+        lfo.connect(lfoGain);
+        lfoGain.connect(this.filter.frequency);
+        this.osc1.connect(this.filter);
+        this.osc2.connect(this.filter);
+        sub.connect(master);
+        this.filter.connect(master);
+        master.connect(this.ctx.destination);
+
+        this.osc1.start();
+        this.osc2.start();
+        sub.start();
+        lfo.start();
+    }
+
+    setAmbientDepth(levelIdx) {
+        if (!this.ctx || !this.osc1) return;
+        // С каждым уровнем гул становится ниже, тяжелее и тревожнее
+        const baseFreq = Math.max(22, 36 - levelIdx * 3.5);
+        this.osc1.frequency.setTargetAtTime(baseFreq, this.ctx.currentTime, 0.5);
+        this.osc2.frequency.setTargetAtTime(baseFreq + 1.8 + levelIdx * 0.4, this.ctx.currentTime, 0.5);
+        this.filter.frequency.setTargetAtTime(95 + levelIdx * 22, this.ctx.currentTime, 0.5);
+    }
+
+    playNoise(duration, cutoffStart, cutoffEnd, volume, filterType = 'lowpass', delay = 0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime + delay;
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = filterType;
+        filter.frequency.setValueAtTime(cutoffStart, now);
+        filter.frequency.exponentialRampToValueAtTime(Math.max(20, cutoffEnd), now + duration);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.005, now + duration);
+
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        src.start(now);
+        src.stop(now + duration);
+    }
+
+    playTone(fStart, fEnd, duration, type = 'sawtooth', volume = 0.3, delay = 0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime + delay;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(fStart, now);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(12, fEnd), now + duration);
+
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.005, now + duration);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + duration);
+    }
+
+    playFootstep(stepIndex) {
+        if (!this.ctx) return;
+        const pitch = stepIndex % 2 === 0 ? 110 : 95;
+        this.playNoise(0.09, 320, 70, 0.16, 'lowpass');
+        this.playTone(pitch, 32, 0.07, 'sine', 0.14);
+    }
+
+    playFlashlightClick(isOn) {
+        if (!this.ctx) return;
+        this.playTone(isOn ? 1400 : 950, isOn ? 2200 : 600, 0.035, 'square', 0.2);
+        this.playNoise(0.03, 3000, 800, 0.25, 'highpass');
+    }
+
+    playDynamoCrank() {
+        if (!this.ctx) return;
+        this.playTone(180, 460, 0.18, 'sawtooth', 0.15);
+        this.playTone(460, 220, 0.16, 'triangle', 0.12, 0.16);
+        this.playNoise(0.3, 1200, 600, 0.12, 'bandpass');
+    }
+
+    playWeapon(type, hitType = 'none') {
+        if (!this.ctx) return;
+        if (type === 0) { // Ржавая труба
+            this.playNoise(0.16, 400, 90, 0.28, 'bandpass');
+            this.playTone(150, 45, 0.16, 'triangle', 0.25);
+            if (hitType === 'wall') {
+                this.playTone(920, 310, 0.18, 'square', 0.28, 0.04);
+                this.playNoise(0.12, 2500, 400, 0.3, 'highpass', 0.04);
+            } else if (hitType === 'flesh') {
+                this.playNoise(0.22, 650, 120, 0.5, 'lowpass', 0.03);
+                this.playTone(110, 35, 0.2, 'sawtooth', 0.4, 0.03);
+            }
+        } else if (type === 1) { // Пистолет
+            this.playNoise(0.24, 1800, 150, 0.55, 'lowpass');
+            this.playTone(240, 42, 0.16, 'sawtooth', 0.45);
+            this.playTone(1600, 900, 0.04, 'square', 0.12, 0.09);
+        } else if (type === 2) { // Двуствольный обрез
+            this.playNoise(0.52, 950, 65, 0.9, 'lowpass');
+            this.playTone(135, 24, 0.42, 'sawtooth', 0.7);
+            this.playTone(75, 18, 0.48, 'sine', 0.65);
+            this.playTone(650, 420, 0.07, 'square', 0.14, 0.45);
+            this.playTone(420, 780, 0.07, 'square', 0.14, 0.62);
+        } else if (type === 3) { // Гвоздемет
+            this.playNoise(0.11, 2800, 450, 0.4, 'bandpass');
+            this.playTone(390, 85, 0.09, 'square', 0.35);
+            this.playTone(1900, 1100, 0.05, 'sine', 0.2);
+        } else if (type === 4) { // Испепелитель (Плазменное орудие)
+            this.playTone(620, 95, 0.38, 'sawtooth', 0.65);
+            this.playTone(1240, 180, 0.32, 'sine', 0.45);
+            this.playNoise(0.35, 3200, 200, 0.5, 'bandpass');
+        }
+    }
+
+    playMonsterSound(type, dist = 3) {
+        if (!this.ctx) return;
+        const vol = Math.min(0.48, Math.max(0.04, 1.3 / (dist * 0.38 + 1)));
+        if (type === 0) { // Истязаемый
+            this.playTone(130, 75, 0.6, 'sawtooth', vol);
+            this.playNoise(0.5, 450, 120, vol * 0.6, 'bandpass');
+        } else if (type === 1) { // Свежеватель
+            this.playTone(340, 140, 0.45, 'sawtooth', vol);
+            this.playNoise(0.4, 1400, 300, vol * 0.7, 'bandpass');
+        } else if (type === 2) { // Чрево
+            this.playTone(78, 32, 0.75, 'sawtooth', vol * 1.2);
+            this.playNoise(0.65, 300, 60, vol * 0.9, 'lowpass');
+        } else if (type === 3) { // Тень Пустоты (Фантом)
+            this.playTone(880, 210, 0.55, 'sine', vol);
+            this.playNoise(0.55, 2400, 400, vol * 0.8, 'highpass');
+        } else if (type === 4) { // Архонт Безысходности (Босс)
+            this.playTone(58, 22, 1.1, 'sawtooth', vol * 1.3);
+            this.playTone(174, 66, 1.0, 'triangle', vol * 0.9);
+            this.playNoise(1.0, 700, 80, vol, 'bandpass');
+        }
+    }
+
+    playDoor() {
+        if (!this.ctx) return;
+        this.playTone(82, 48, 0.85, 'sawtooth', 0.35);
+        this.playNoise(0.85, 320, 90, 0.35, 'lowpass');
+        this.playTone(420, 180, 0.15, 'square', 0.2, 0.75);
+    }
+
+    playPickup() {
+        if (!this.ctx) return;
+        this.playTone(360, 580, 0.11, 'sine', 0.22);
+        this.playTone(580, 820, 0.14, 'triangle', 0.18, 0.08);
+    }
+
+    playHurt() {
+        if (!this.ctx) return;
+        this.playNoise(0.35, 550, 80, 0.65, 'lowpass');
+        this.playTone(160, 42, 0.35, 'sawtooth', 0.5);
+        this.playTone(3600, 3550, 1.2, 'sine', 0.06);
+    }
+
+    playHeartbeat() {
+        if (!this.ctx) return;
+        this.playTone(58, 28, 0.16, 'sine', 0.5);
+        this.playTone(48, 24, 0.18, 'sine', 0.35, 0.22);
+    }
+
+    playRandomCreep() {
+        if (!this.ctx) return;
+        const f = 110 + Math.random() * 170;
+        this.playTone(f, f * 0.38, 1.4, 'triangle', 0.09);
+        this.playNoise(1.2, 400, 60, 0.08, 'bandpass');
+    }
+}
+
+const sfx = new HorrorAudio();
+
+// ==========================================
+// 2. ГЕНЕРАЦИЯ ТЕКСТУР И СПРАЙТОВ (128x128)
+// ==========================================
+const TEX_SIZE = 128;
+const TEX_MASK = TEX_SIZE - 1;
+const wallTextures = [];
+const floorTextures = [];
+const spriteTextures = {};
+
+function createCanvas() {
+    const c = document.createElement('canvas');
+    c.width = TEX_SIZE;
+    c.height = TEX_SIZE;
+    return c;
+}
+
+function generateAssets() {
+    // Текстуры пола и потолка
+    for (let f = 0; f < 2; f++) {
+        const c = createCanvas();
+        const ctx = c.getContext('2d');
+        for (let y = 0; y < TEX_SIZE; y++) {
+            for (let x = 0; x < TEX_SIZE; x++) {
+                const n = (Math.random() - 0.5) * 18;
+                if (f === 0) {
+                    const grid = (x % 32 === 0 || y % 32 === 0) ? -16 : 0;
+                    const blood = (Math.sin(x * 0.09) + Math.cos(y * 0.09)) > 1.25 ? 25 : 0;
+                    const r = Math.max(8, 36 + grid + blood + n);
+                    const g = Math.max(6, 26 + grid - blood * 0.4 + n);
+                    const b = Math.max(6, 24 + grid - blood * 0.4 + n);
+                    ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+                } else {
+                    const beam = (x % 64 < 6 || y % 64 < 6) ? -12 : 0;
+                    const r = Math.max(5, 22 + beam + n * 0.7);
+                    const g = Math.max(5, 20 + beam + n * 0.7);
+                    const b = Math.max(5, 22 + beam + n * 0.7);
+                    ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+                }
+                ctx.fillRect(x, y, 1, 1);
+            }
+        }
+        floorTextures[f] = ctx.getImageData(0, 0, TEX_SIZE, TEX_SIZE).data;
+    }
+
+    // Текстуры стен (1..9)
+    for (let t = 1; t <= 9; t++) {
+        const c = createCanvas();
+        const ctx = c.getContext('2d');
+
+        for (let y = 0; y < TEX_SIZE; y++) {
+            for (let x = 0; x < TEX_SIZE; x++) {
+                const n = (Math.random() - 0.5) * 26;
+                let r = 45, g = 40, b = 38;
+
+                if (t === 1) { // Ржавый металл
+                    const seam = (y % 32 === 0 || x % 64 === 0) ? -28 : ((y % 32 === 1 || x % 64 === 1) ? 18 : 0);
+                    const rust = Math.sin(x * 0.12) * Math.cos(y * 0.08) * 18;
+                    r = 62 + rust + seam + n;
+                    g = 38 + rust * 0.4 + seam + n * 0.7;
+                    b = 30 + seam + n * 0.6;
+                } else if (t === 2 || t === 9) { // Сырой кирпич / бетон
+                    const blockY = y % 32 === 0;
+                    const blockX = (x + (Math.floor(y / 32) % 2) * 32) % 64 === 0;
+                    const mortar = (blockY || blockX) ? -22 : 0;
+                    const damp = Math.sin(x * 0.06 + y * 0.05) * 12;
+                    r = 50 + mortar + damp + n;
+                    g = 52 + mortar + damp + n;
+                    b = 48 + mortar + damp + n;
+                } else if (t === 3) { // Стена живой плоти
+                    const organic = Math.sin(x * 0.16 + Math.cos(y * 0.12) * 2) * 28;
+                    r = 88 + organic + n;
+                    g = 15 + Math.max(0, organic * 0.3) + n * 0.3;
+                    b = 19 + n * 0.3;
+                } else if (t === 4 || t === 5) { // Гермозатвор / Заблокированный шлюз
+                    const panel = (x > 58 && x < 70) ? -25 : ((x % 16 === 0) ? -10 : 0);
+                    const hazard = (y > 104 && ((x + y) % 16 < 8)) ? 45 : 0;
+                    r = (t === 5 ? 88 : 52) + panel + hazard + n * 0.6;
+                    g = 42 + panel + (t === 5 ? 0 : hazard * 0.7) + n * 0.6;
+                    b = 40 + panel + n * 0.6;
+                } else if (t === 6 || t === 7) { // Рубильник
+                    r = 46 + n; g = 38 + n; b = 38 + n;
+                } else if (t === 8) { // Лифт в Бездну
+                    const d = Math.hypot(x - 64, y - 64);
+                    const pulse = Math.sin(d * 0.25) * 30;
+                    r = Math.max(20, 195 - d * 2 + pulse);
+                    g = Math.max(5, 35 - d * 0.5);
+                    b = Math.max(5, 35 - d * 0.5);
+                }
+
+                ctx.fillStyle = `rgb(${Math.max(0,Math.min(255,r))|0},${Math.max(0,Math.min(255,g))|0},${Math.max(0,Math.min(255,b))|0})`;
+                ctx.fillRect(x, y, 1, 1);
+            }
+        }
+
+        if (t === 1 || t === 2) {
+            ctx.fillStyle = 'rgba(90, 0, 0, 0.72)';
+            for (let i = 0; i < 9; i++) {
+                const bx = (i * 17 + t * 13) % 120;
+                const bh = 25 + (i * 23) % 85;
+                ctx.fillRect(bx, 0, 3 + (i % 3), bh);
+            }
+        }
+        if (t === 2) {
+            ctx.fillStyle = 'rgba(130, 5, 5, 0.75)';
+            ctx.font = 'bold 14px Courier New';
+            ctx.fillText('НЕ ГАСИ СВЕТ', 14, 56);
+            ctx.font = 'bold 11px Courier New';
+            ctx.fillText('ОНИ ИДУТ', 32, 86);
+        }
+        if (t === 9) {
+            ctx.strokeStyle = '#080808';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(64, 10); ctx.lineTo(54, 48); ctx.lineTo(72, 85); ctx.lineTo(58, 122);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(170, 0, 0, 0.85)';
+            ctx.beginPath();
+            ctx.arc(64, 64, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.font = 'bold 11px Courier New';
+            ctx.fillText('ТАЙНИК [E]', 30, 105);
+        }
+        if (t === 4 || t === 5) {
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(3, 3, 122, 122);
+            ctx.fillStyle = t === 5 ? '#ff1111' : '#aa7722';
+            ctx.font = 'bold 13px Courier New';
+            ctx.fillText(t === 5 ? 'ЗАБЛОКИРОВАНО' : 'ГЕРМОЗАТВОР [E]', 10, 64);
+        }
+        if (t === 6 || t === 7) {
+            ctx.fillStyle = '#161616';
+            ctx.fillRect(38, 28, 52, 72);
+            ctx.strokeStyle = '#600';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(38, 28, 52, 72);
+            ctx.fillStyle = t === 7 ? '#22ff22' : '#ff1111';
+            ctx.fillRect(54, t === 7 ? 38 : 70, 20, 18);
+            ctx.fillStyle = '#aaa';
+            ctx.font = 'bold 10px Courier New';
+            ctx.fillText(t === 7 ? 'ПИТАНИЕ ВКЛ' : 'РУБИЛЬНИК [E]', 24, 20);
+        }
+        if (t === 8) {
+            ctx.strokeStyle = '#ff3333';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(16, 16, 96, 96);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px Courier New';
+            ctx.fillText('СПУСК [E]', 22, 68);
+        }
+
+        wallTextures[t] = ctx.getImageData(0, 0, TEX_SIZE, TEX_SIZE).data;
+    }
+
+    // Спрайты 5 видов врагов (0..4)
+    for (let type = 0; type <= 4; type++) {
+        spriteTextures[`m${type}_0`] = makeMonsterSprite(type, 0, false);
+        spriteTextures[`m${type}_1`] = makeMonsterSprite(type, 1, false);
+        spriteTextures[`m${type}_hurt`] = makeMonsterSprite(type, 0, true);
+    }
+    spriteTextures.corpse0 = makeCorpseSprite('#655a52');
+    spriteTextures.corpse1 = makeCorpseSprite('#821212');
+    spriteTextures.corpse2 = makeCorpseSprite('#3d0a0a');
+    spriteTextures.corpse3 = makeCorpseSprite('#152830');
+    spriteTextures.corpse4 = makeCorpseSprite('#990000');
+
+    spriteTextures.medkit = makeItemSprite('medkit');
+    spriteTextures.ammo = makeItemSprite('ammo');
+    spriteTextures.battery = makeItemSprite('battery');
+    spriteTextures.shotgun = makeItemSprite('shotgun');
+    spriteTextures.nailgun = makeItemSprite('nailgun');
+    spriteTextures.plasmagun = makeItemSprite('plasmagun');
+    spriteTextures.pillar = makeItemSprite('pillar');
+    spriteTextures.fireball = makeItemSprite('fireball');
+    spriteTextures.plasmaball = makeItemSprite('plasmaball');
+}
+
+function makeMonsterSprite(type, frame, isHurt) {
+    const c = createCanvas();
+    const ctx = c.getContext('2d');
+    const shift = frame === 1 ? 4 : -4;
+
+    if (type === 0) {
+        // 0: ИСТЯЗАЕМЫЙ
+        ctx.fillStyle = isHurt ? '#ff7777' : '#857e74';
+        ctx.beginPath();
+        ctx.arc(64 + shift * 0.5, 30, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(50, 44, 28, 42);
+        ctx.fillRect(48, 86, 11, 34 + shift);
+        ctx.fillRect(69, 86, 11, 34 - shift);
+        ctx.fillRect(34, 46 - shift, 14, 38);
+        ctx.fillRect(80, 46 + shift, 14, 38);
+        ctx.fillStyle = '#ccc';
+        ctx.fillRect(32, 80 - shift, 6, 18);
+        ctx.fillStyle = '#680000';
+        for (let r = 50; r < 78; r += 6) ctx.fillRect(53, r, 22, 3);
+        ctx.fillStyle = '#050000';
+        ctx.fillRect(55 + shift * 0.5, 25, 7, 8);
+        ctx.fillRect(67 + shift * 0.5, 25, 7, 8);
+        ctx.fillRect(58 + shift * 0.5, 36, 12, 8);
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(57 + shift * 0.5, 28, 3, 3);
+        ctx.fillRect(69 + shift * 0.5, 28, 3, 3);
+    } else if (type === 1) {
+        // 1: СВЕЖЕВАТЕЛЬ
+        ctx.fillStyle = isHurt ? '#ffaaaa' : '#8f1515';
+        ctx.beginPath();
+        ctx.arc(64, 28 + shift * 0.4, 17, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(42, 44, 44, 44);
+        ctx.fillRect(45, 88, 14, 34 - shift);
+        ctx.fillRect(69, 88, 14, 34 + shift);
+        ctx.fillRect(24, 42 + shift, 18, 36);
+        ctx.fillRect(86, 42 - shift, 18, 36);
+        ctx.fillStyle = '#d8cbb8';
+        ctx.beginPath();
+        ctx.moveTo(42, 44); ctx.lineTo(30, 24); ctx.lineTo(52, 44);
+        ctx.moveTo(86, 44); ctx.lineTo(98, 24); ctx.lineTo(76, 44);
+        ctx.fill();
+        ctx.fillStyle = '#fffa00';
+        ctx.fillRect(54, 24, 6, 5);
+        ctx.fillRect(68, 24, 6, 5);
+        ctx.fillStyle = '#110000';
+        ctx.fillRect(54, 33, 20, 8);
+    } else if (type === 2) {
+        // 2: ЧРЕВО (Пожиратель)
+        ctx.fillStyle = isHurt ? '#ff5555' : '#2d0909';
+        ctx.beginPath();
+        ctx.arc(64, 58 + shift * 0.5, 42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(30, 84, 22, 38 + shift);
+        ctx.fillRect(76, 84, 22, 38 - shift);
+        ctx.fillRect(14, 50 - shift, 20, 42);
+        ctx.fillRect(94, 50 + shift, 20, 42);
+        ctx.fillStyle = '#990000';
+        ctx.fillRect(50, 28, 28, 60);
+        ctx.fillStyle = '#e5dcc5';
+        for (let y = 32; y < 84; y += 8) {
+            ctx.fillRect(50, y, 8, 4);
+            ctx.fillRect(70, y, 8, 4);
+        }
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(36, 34, 6, 5);
+        ctx.fillRect(86, 34, 6, 5);
+        ctx.fillRect(40, 46, 5, 5);
+        ctx.fillRect(83, 46, 5, 5);
+    } else if (type === 3) {
+        // 3: ТЕНЬ ПУСТОТЫ (Стремительный призрачный жнец, почти невидимый без фонарика)
+        ctx.fillStyle = isHurt ? '#88ffff' : '#121820';
+        ctx.beginPath();
+        ctx.moveTo(64, 12);
+        ctx.lineTo(100, 55 + shift);
+        ctx.lineTo(84, 120);
+        ctx.lineTo(44, 120);
+        ctx.lineTo(28, 55 - shift);
+        ctx.closePath();
+        ctx.fill();
+        // Длинные когти-серпы
+        ctx.strokeStyle = isHurt ? '#ffffff' : '#3a5566';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(32, 55); ctx.lineTo(10, 95 + shift);
+        ctx.moveTo(96, 55); ctx.lineTo(118, 95 - shift);
+        ctx.stroke();
+        // Ярко-горящие желто-белые глаза во тьме
+        ctx.fillStyle = '#fffa00';
+        ctx.fillRect(52, 32, 7, 6);
+        ctx.fillRect(69, 32, 7, 6);
+    } else if (type === 4) {
+        // 4: АРХОНТ БЕЗЫСХОДНОСТИ (Босс)
+        ctx.fillStyle = isHurt ? '#ffffff' : '#580000';
+        ctx.beginPath();
+        ctx.arc(64, 56 + shift, 50, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = isHurt ? '#ff9999' : '#b8a696';
+        ctx.beginPath();
+        ctx.arc(46, 46 + shift, 18, 0, Math.PI * 2);
+        ctx.arc(82, 50 + shift, 16, 0, Math.PI * 2);
+        ctx.arc(64, 74 + shift, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(38, 42 + shift, 6, 7); ctx.fillRect(50, 42 + shift, 6, 7);
+        ctx.fillRect(75, 46 + shift, 5, 6); ctx.fillRect(85, 46 + shift, 5, 6);
+        ctx.fillRect(52, 72 + shift, 24, 16);
+        ctx.fillStyle = '#fffa00';
+        ctx.fillRect(40, 44 + shift, 3, 3); ctx.fillRect(52, 44 + shift, 3, 3);
+        ctx.fillRect(76, 48 + shift, 3, 3); ctx.fillRect(86, 48 + shift, 3, 3);
+    }
+
+    return ctx.getImageData(0, 0, TEX_SIZE, TEX_SIZE).data;
+}
+
+function makeCorpseSprite(color) {
+    const c = createCanvas();
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#5a0000';
+    ctx.beginPath();
+    ctx.ellipse(64, 114, 46, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(64, 108, 34, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    return ctx.getImageData(0, 0, TEX_SIZE, TEX_SIZE).data;
+}
+
+function makeItemSprite(kind) {
+    const c = createCanvas();
+    const ctx = c.getContext('2d');
+
+    if (kind === 'medkit') {
+        ctx.fillStyle = '#b5b5b5';
+        ctx.fillRect(40, 88, 48, 32);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(40, 88, 48, 32);
+        ctx.fillStyle = '#b00';
+        ctx.fillRect(59, 94, 10, 20);
+        ctx.fillRect(54, 99, 20, 10);
+    } else if (kind === 'ammo') {
+        ctx.fillStyle = '#4a3d28';
+        ctx.fillRect(42, 92, 44, 28);
+        ctx.fillStyle = '#cfa028';
+        for (let i = 46; i < 82; i += 7) ctx.fillRect(i, 86, 4, 8);
+    } else if (kind === 'battery') {
+        ctx.fillStyle = '#224455';
+        ctx.fillRect(50, 90, 28, 30);
+        ctx.fillStyle = '#fffa00';
+        ctx.fillRect(58, 85, 12, 6);
+        ctx.fillRect(60, 98, 8, 14);
+    } else if (kind === 'shotgun') {
+        ctx.fillStyle = '#5a5a5a';
+        ctx.fillRect(24, 100, 76, 8);
+        ctx.fillStyle = '#4d2611';
+        ctx.fillRect(16, 104, 28, 12);
+    } else if (kind === 'nailgun') {
+        ctx.fillStyle = '#333';
+        ctx.fillRect(28, 92, 72, 20);
+        ctx.fillStyle = '#a00';
+        ctx.fillRect(48, 84, 24, 12);
+    } else if (kind === 'plasmagun') {
+        ctx.fillStyle = '#223844';
+        ctx.fillRect(24, 88, 80, 24);
+        ctx.fillStyle = '#fffa00';
+        ctx.fillRect(42, 92, 36, 8);
+    } else if (kind === 'pillar') {
+        ctx.fillStyle = '#2a1a1a';
+        ctx.fillRect(60, 0, 8, 90);
+        ctx.fillStyle = '#680808';
+        ctx.beginPath();
+        ctx.ellipse(64, 66, 22, 38, 0, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (kind === 'fireball') {
+        const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 28);
+        grad.addColorStop(0, '#fffa00');
+        grad.addColorStop(0.45, '#ff1100');
+        grad.addColorStop(1, 'rgba(120,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(64, 64, 28, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (kind === 'plasmaball') {
+        const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 30);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.45, '#fffa00');
+        grad.addColorStop(1, 'rgba(0,180,255,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(64, 64, 30, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    return ctx.getImageData(0, 0, TEX_SIZE, TEX_SIZE).data;
+}
+
+// ==========================================
+// 3. ДАННЫЕ КАМПАНИИ ИЗ 4 УРОВНЕЙ (НАРАСТАЮЩАЯ СЛОЖНОСТЬ)
+// ==========================================
+const WEAPON_DATA = [
+    { name: "РЖАВАЯ ТРУБА", dmg: 38, range: 2.0, delay: 0.38, ammoUse: 0, pellets: 1, spread: 0 },
+    { name: "ПМ «ИСХОД»", dmg: 28, range: 20.0, delay: 0.25, ammoUse: 1, pellets: 1, spread: 0.025 },
+    { name: "ДВУСТВОЛЬНЫЙ ОБРЕЗ", dmg: 21, range: 14.0, delay: 0.72, ammoUse: 2, pellets: 8, spread: 0.13 },
+    { name: "ГВОЗДЕМЕТ «АГОНИЯ»", dmg: 19, range: 18.0, delay: 0.10, ammoUse: 1, pellets: 1, spread: 0.055 },
+    { name: "ИСПЕПЕЛИТЕЛЬ БЕЗДНЫ", dmg: 95, range: 22.0, delay: 0.48, ammoUse: 3, pellets: 3, spread: 0.04 }
+];
+
+const LEVELS = [
+    // ====================================================
+    // УРОВЕНЬ 01: ПАРАДНЫЙ ВХОД (DOOM II - MAP01: ENTRYWAY)
+    // ====================================================
+    {
+        title: "УРОВЕНЬ 01: ПАРАДНЫЙ ВХОД",
+        subtitle: "MAP01: ENTRYWAY // Ржавый приёмник чистилища. Обернись назад за Двустволкой, пробейся через главный зал к северному рубильнику и открой южный шлюз.",
+        start: { x: 4.5, y: 19.5, dirX: 0, dirY: -1, planeX: 0.66, planeY: 0 },
+        speedMult: 1.0,
+        batteryDrain: 1.25,
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0,0,6,0,2,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0,0,0,0,2,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,4,2,2,2,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,0,0,0,0,2,2,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,2,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,2,0,0,1,1,0,0,1,1,0,9,3,3],
+            [1,1,1,1,1,1,1,1,1,1,1,2,0,0,1,1,0,0,1,1,0,2,0,3],
+            [1,1,1,1,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,2,0,3],
+            [1,1,1,1,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,2,0,3],
+            [1,1,1,1,1,1,1,1,1,1,1,2,0,0,1,1,0,0,1,1,0,2,0,3],
+            [1,1,1,2,2,2,2,2,1,1,1,2,0,0,1,1,0,0,1,1,0,2,0,3],
+            [1,1,2,0,0,0,0,2,2,2,2,2,0,0,0,0,0,0,0,0,0,2,3,3],
+            [1,1,2,0,0,1,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,2,1,1],
+            [1,1,2,0,1,1,1,2,2,2,2,2,2,2,2,5,2,2,2,2,2,2,1,1],
+            [1,1,2,0,0,1,0,2,1,1,1,1,1,1,2,0,2,1,1,1,1,1,1,1],
+            [1,1,2,0,0,0,0,2,1,1,1,1,1,1,2,0,2,2,2,2,2,2,1,1],
+            [1,1,1,2,0,0,2,1,1,1,1,1,1,1,2,0,0,0,0,0,0,2,1,1],
+            [1,1,1,2,0,0,2,1,1,1,1,1,1,1,2,2,2,2,2,4,2,2,1,1],
+            [1,1,1,2,0,0,2,1,1,1,1,1,1,1,1,1,1,3,0,0,0,3,1,1],
+            [1,1,1,2,0,0,2,1,1,1,1,1,1,1,1,1,1,3,0,0,0,3,1,1],
+            [1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,3,0,0,0,3,1,1],
+            [1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,3,3,8,3,3,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            { x: 3.5, y: 15.5, type: 0 },
+            { x: 6.5, y: 12.5, type: 0 },
+            { x: 9.5, y: 13.5, type: 1 },
+            { x: 13.5, y: 11.5, type: 0 },
+            { x: 16.5, y: 8.5,  type: 1 },
+            { x: 19.5, y: 6.5,  type: 2 },
+            { x: 13.5, y: 6.5,  type: 1 },
+            { x: 18.0, y: 2.2,  type: 2 },
+            { x: 22.5, y: 10.5, type: 1 },
+            { x: 18.5, y: 17.5, type: 2 },
+            { x: 19.5, y: 20.5, type: 4 }
+        ],
+        pickups: [
+            { x: 4.5, y: 22.3, kind: 'shotgun' },
+            { x: 5.5, y: 16.5, kind: 'ammo' },
+            { x: 3.5, y: 12.5, kind: 'medkit' },
+            { x: 16.5, y: 12.5, kind: 'ammo' },
+            { x: 16.5, y: 9.5,  kind: 'battery' },
+            { x: 20.5, y: 5.5,  kind: 'medkit' },
+            { x: 12.5, y: 5.5,  kind: 'ammo' },
+            { x: 16.5, y: 1.5,  kind: 'medkit' },
+            { x: 19.5, y: 1.5,  kind: 'ammo' },
+            { x: 22.5, y: 7.5,  kind: 'nailgun' },
+            { x: 22.5, y: 9.0,  kind: 'medkit' },
+            { x: 22.5, y: 11.5, kind: 'ammo' },
+            { x: 20.5, y: 17.5, kind: 'medkit' },
+            { x: 16.5, y: 17.5, kind: 'battery' }
+        ],
+        props: [
+            { x: 5.5, y: 13.5 }, { x: 16.5, y: 6.5 }, { x: 16.5, y: 10.5 }, { x: 19.5, y: 19.5 }
+        ]
+    },
+
+    // ====================================================
+    // УРОВЕНЬ 02: КАТАКОМБЫ СКОРБИ (DOOM II - MAP02: UNDERHALLS)
+    // ====================================================
+    {
+        title: "УРОВЕНЬ 02: КАТАКОМБЫ СКОРБИ",
+        subtitle: "MAP02: UNDERHALLS // Затопленные кирпичные коллекторы. Здесь во тьме обитают Тени Пустоты. Пробейся в восточное крыло, чтобы подать питание на шлюз.",
+        start: { x: 3.5, y: 3.5, dirX: 1, dirY: 0, planeX: 0, planeY: 0.66 },
+        speedMult: 1.15,
+        batteryDrain: 1.45,
+        map: [
+            [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+            [2,0,0,0,0,0,2,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,2,2],
+            [2,0,0,0,0,0,4,0,0,2,2,2,0,0,4,0,0,1,1,0,6,0,2,2],
+            [2,0,0,0,0,0,2,0,0,2,2,2,0,0,2,0,0,0,0,0,0,0,2,2],
+            [2,2,2,4,2,2,2,0,0,0,0,0,0,0,2,2,2,2,4,2,2,2,2,2],
+            [2,0,0,0,0,0,2,2,2,4,2,2,2,2,2,0,0,0,0,0,2,3,3,2],
+            [2,0,1,0,1,0,2,0,0,0,0,0,0,0,2,0,0,1,0,0,9,0,3,2],
+            [2,0,0,0,0,0,2,0,0,1,0,1,0,0,2,0,0,0,0,0,2,0,3,2],
+            [2,0,1,0,1,0,4,0,0,0,0,0,0,0,4,0,0,1,0,0,2,0,3,2],
+            [2,0,0,0,0,0,2,0,0,1,0,1,0,0,2,0,0,0,0,0,2,3,3,2],
+            [2,2,2,2,2,2,2,0,0,0,0,0,0,0,2,2,2,2,2,2,2,2,2,2],
+            [1,1,1,1,1,1,2,2,2,5,5,2,2,2,2,1,1,1,1,1,1,1,1,1],
+            [1,1,2,2,2,2,2,0,0,0,0,0,0,0,2,2,2,2,2,2,1,1,1,1],
+            [1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1],
+            [1,1,2,0,0,2,2,0,0,0,0,0,0,0,2,2,0,0,0,2,1,1,1,1],
+            [1,1,2,0,0,2,2,0,0,3,0,3,0,0,2,2,0,0,0,2,1,1,1,1],
+            [1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1],
+            [1,1,2,2,2,2,2,2,2,4,4,2,2,2,2,2,2,2,2,2,1,1,1,1],
+            [1,1,1,1,1,1,3,0,0,0,0,0,0,3,1,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,3,0,0,0,0,0,0,3,1,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,3,0,0,0,0,0,0,3,1,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,3,3,3,8,8,3,3,3,1,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            { x: 10.5, y: 4.2, type: 0 },
+            { x: 12.5, y: 1.8, type: 1 },
+            { x: 3.5,  y: 7.5, type: 2 },
+            { x: 8.5,  y: 7.5, type: 1 },
+            { x: 12.5, y: 8.5, type: 3 }, // Тень Пустоты!
+            { x: 17.5, y: 7.5, type: 2 },
+            { x: 19.5, y: 2.5, type: 3 },
+            { x: 16.5, y: 2.0, type: 1 },
+            { x: 21.5, y: 7.5, type: 1 },
+            // Южный затопленный зал за шлюзом
+            { x: 4.5,  y: 14.5, type: 2 },
+            { x: 16.5, y: 14.5, type: 2 },
+            { x: 10.5, y: 13.5, type: 3 },
+            { x: 9.5,  y: 19.5, type: 4 },
+            { x: 11.5, y: 19.5, type: 1 }
+        ],
+        pickups: [
+            { x: 1.5,  y: 1.5,  kind: 'ammo' },
+            { x: 1.5,  y: 9.5,  kind: 'medkit' },
+            { x: 5.0,  y: 9.5,  kind: 'battery' },
+            { x: 10.5, y: 8.0,  kind: 'ammo' },
+            { x: 19.5, y: 3.2,  kind: 'medkit' },
+            { x: 16.0, y: 1.5,  kind: 'ammo' },
+            // Тайник на востоке
+            { x: 21.5, y: 6.5,  kind: 'nailgun' },
+            { x: 21.5, y: 8.5,  kind: 'medkit' },
+            { x: 21.5, y: 7.5,  kind: 'battery' },
+            // Южный зал
+            { x: 3.5,  y: 16.0, kind: 'medkit' },
+            { x: 17.5, y: 16.0, kind: 'ammo' },
+            { x: 10.5, y: 16.0, kind: 'ammo' },
+            { x: 8.0,  y: 19.5, kind: 'medkit' }
+        ],
+        props: [
+            { x: 8.0, y: 4.2 }, { x: 10.5, y: 10.0 }, { x: 8.5, y: 15.5 }, { x: 12.5, y: 15.5 }
+        ]
+    },
+
+    // ====================================================
+    // УРОВЕНЬ 03: СКВОЗЬ СТРОЙ (DOOM II - MAP03: THE GANTLET)
+    // ====================================================
+    {
+        title: "УРОВЕНЬ 03: СКВОЗЬ СТРОЙ",
+        subtitle: "MAP03: THE GANTLET // Круговой расстрельный бастион. Найди секретный склеп на западе, чтобы завладеть «Испепелителем Бездны».",
+        start: { x: 11.5, y: 2.5, dirX: 0, dirY: 1, planeX: -0.66, planeY: 0 },
+        speedMult: 1.28,
+        batteryDrain: 1.65,
+        map: [
+            [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,1,2,0,0,0,0,0,2,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,1,2,0,0,0,0,0,2,1,1,1,1,1,1,1,1,1],
+            [1,1,1,2,2,2,2,2,2,2,2,4,2,2,2,2,2,2,2,2,1,1,1,1],
+            [1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1],
+            [1,1,1,2,0,0,2,2,2,0,0,0,0,0,2,2,2,0,0,2,1,1,1,1],
+            [1,3,3,2,0,0,2,0,0,0,0,0,0,0,0,0,2,0,0,2,3,3,3,1],
+            [1,3,0,9,0,0,2,0,0,3,0,0,0,3,0,0,2,0,0,4,0,0,3,1],
+            [1,3,0,2,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,0,6,3,1],
+            [1,3,0,2,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,2,0,0,3,1],
+            [1,3,0,2,0,0,2,0,0,3,0,1,0,3,0,0,2,0,0,2,3,3,3,1],
+            [1,3,3,2,0,0,2,0,0,0,0,0,0,0,0,0,2,0,0,2,1,1,1,1],
+            [1,1,1,2,0,0,2,2,2,0,0,0,0,0,2,2,2,0,0,2,1,1,1,1],
+            [1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1],
+            [1,1,1,2,2,2,2,2,2,2,5,5,5,2,2,2,2,2,2,2,1,1,1,1],
+            [1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,2,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,2,0,0,1,0,1,0,0,2,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,2,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,2,2,2,4,4,4,2,2,2,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,3,0,0,0,0,0,0,0,3,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,3,0,0,0,0,0,0,0,3,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,3,0,0,0,0,0,0,0,3,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,3,3,3,8,8,8,3,3,3,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            { x: 8.5,  y: 4.5,  type: 0 },
+            { x: 14.5, y: 4.5,  type: 0 },
+            { x: 4.5,  y: 8.5,  type: 2 },
+            { x: 18.0, y: 8.5,  type: 2 },
+            { x: 8.5,  y: 8.5,  type: 1 },
+            { x: 14.5, y: 8.5,  type: 1 },
+            { x: 8.5,  y: 11.5, type: 3 },
+            { x: 14.5, y: 11.5, type: 3 },
+            { x: 11.5, y: 13.5, type: 2 },
+            { x: 20.5, y: 8.5,  type: 3 },
+            // За южным шлюзом
+            { x: 9.0,  y: 16.5, type: 2 },
+            { x: 14.0, y: 16.5, type: 2 },
+            { x: 11.5, y: 17.5, type: 3 },
+            { x: 10.0, y: 20.5, type: 4 },
+            { x: 13.0, y: 20.5, type: 4 }
+        ],
+        pickups: [
+            { x: 9.5,  y: 1.5,  kind: 'ammo' },
+            { x: 13.5, y: 1.5,  kind: 'battery' },
+            // Секретный склеп на западе (5-е оружие!)
+            { x: 2.5,  y: 7.5,  kind: 'plasmagun' },
+            { x: 2.5,  y: 9.0,  kind: 'ammo' },
+            { x: 2.5,  y: 10.2, kind: 'medkit' },
+            // Арена
+            { x: 4.5,  y: 4.5,  kind: 'medkit' },
+            { x: 18.0, y: 4.5,  kind: 'ammo' },
+            { x: 4.5,  y: 13.0, kind: 'ammo' },
+            { x: 18.0, y: 13.0, kind: 'battery' },
+            { x: 11.5, y: 6.5,  kind: 'medkit' },
+            // Перед финалом уровня
+            { x: 8.5,  y: 15.5, kind: 'medkit' },
+            { x: 14.5, y: 15.5, kind: 'ammo' },
+            { x: 11.5, y: 19.5, kind: 'medkit' }
+        ],
+        props: [
+            { x: 11.5, y: 4.5 }, { x: 7.5, y: 9.5 }, { x: 15.5, y: 9.5 }, { x: 11.5, y: 15.5 }
+        ]
+    },
+
+    // ====================================================
+    // УРОВЕНЬ 04: СЕРДЦЕВИНА ВИНЫ (DOOM II - MAP04: THE FOCUS / ФИНАЛ)
+    // ====================================================
+    {
+        title: "УРОВЕНЬ 04: СЕРДЦЕВИНА ВИНЫ",
+        subtitle: "MAP04: THE FOCUS // Дно твоей памяти. Стены из живой плоти, кромешная тьма и собор Архонта Безысходности.",
+        start: { x: 11.5, y: 2.0, dirX: 0, dirY: 1, planeX: -0.66, planeY: 0 },
+        speedMult: 1.42,
+        batteryDrain: 1.85,
+        map: [
+            [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,3,3,3,0,0,0,0,0,3,3,3,3,3,3,3,3,3,3],
+            [3,3,0,0,0,3,3,3,3,0,0,0,0,0,3,3,3,3,0,0,0,3,3,3],
+            [3,3,0,0,0,4,0,0,0,0,0,3,0,0,0,0,0,4,0,6,0,3,3,3],
+            [3,3,0,0,0,3,0,0,3,3,3,3,3,3,3,0,0,3,0,0,0,3,3,3],
+            [3,3,3,9,3,3,0,0,3,0,0,0,0,0,3,0,0,3,3,3,3,3,3,3],
+            [3,3,0,0,0,3,0,0,4,0,0,0,0,0,4,0,0,3,3,3,3,3,3,3],
+            [3,3,0,0,0,3,0,0,3,0,0,1,0,0,3,0,0,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,0,0,3,0,0,0,0,0,3,0,0,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,0,0,3,3,3,4,3,3,3,0,0,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,3,3,3,3,5,5,5,3,3,3,3,3,3,3,3,3,3,3],
+            [3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3],
+            [3,3,3,0,0,3,3,0,0,0,0,0,0,0,0,0,3,3,0,0,3,3,3,3],
+            [3,3,3,0,0,3,3,0,0,0,0,0,0,0,0,0,3,3,0,0,3,3,3,3],
+            [3,3,3,0,0,0,0,0,0,0,3,0,3,0,0,0,0,0,0,0,3,3,3,3],
+            [3,3,3,0,0,3,3,0,0,0,0,0,0,0,0,0,3,3,0,0,3,3,3,3],
+            [3,3,3,0,0,3,3,0,0,0,0,0,0,0,0,0,3,3,0,0,3,3,3,3],
+            [3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3],
+            [3,3,3,3,3,3,3,3,3,4,4,4,4,4,3,3,3,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,3,3,3,0,0,0,0,0,3,3,3,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,3,3,3,0,0,0,0,0,3,3,3,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,3,3,3,3,8,8,8,3,3,3,3,3,3,3,3,3,3,3],
+            [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]
+        ],
+        enemies: [
+            { x: 7.0,  y: 3.5,  type: 1 },
+            { x: 16.0, y: 3.5,  type: 1 },
+            { x: 3.5,  y: 3.5,  type: 2 },
+            { x: 19.5, y: 4.2,  type: 3 },
+            { x: 11.5, y: 6.0,  type: 3 },
+            { x: 11.5, y: 8.2,  type: 2 },
+            { x: 7.0,  y: 10.2, type: 2 },
+            { x: 16.0, y: 10.2, type: 3 },
+            // Собор Архонта (Финальная битва)
+            { x: 4.5,  y: 13.5, type: 2 },
+            { x: 18.5, y: 13.5, type: 2 },
+            { x: 8.5,  y: 14.5, type: 3 },
+            { x: 14.5, y: 14.5, type: 3 },
+            { x: 4.5,  y: 17.5, type: 1 },
+            { x: 18.5, y: 17.5, type: 1 },
+            { x: 11.5, y: 14.0, type: 4 }, // Страж собора
+            { x: 11.5, y: 17.5, type: 4, isArchon: true }, // ИСТИННЫЙ ФИНАЛЬНЫЙ БОСС
+            { x: 11.5, y: 20.8, type: 3 }
+        ],
+        pickups: [
+            { x: 10.0, y: 1.5,  kind: 'ammo' },
+            { x: 13.0, y: 1.5,  kind: 'battery' },
+            { x: 3.5,  y: 2.5,  kind: 'medkit' },
+            // Секретная комната на западе
+            { x: 3.5,  y: 6.8,  kind: 'plasmagun' },
+            { x: 2.5,  y: 6.8,  kind: 'ammo' },
+            { x: 4.5,  y: 6.8,  kind: 'medkit' },
+            // Центр
+            { x: 10.0, y: 7.0,  kind: 'medkit' },
+            { x: 13.0, y: 7.0,  kind: 'ammo' },
+            { x: 19.5, y: 2.5,  kind: 'battery' },
+            { x: 11.5, y: 10.2, kind: 'medkit' },
+            // Собор
+            { x: 4.0,  y: 12.5, kind: 'ammo' },
+            { x: 19.0, y: 12.5, kind: 'ammo' },
+            { x: 4.0,  y: 18.2, kind: 'medkit' },
+            { x: 19.0, y: 18.2, kind: 'medkit' },
+            { x: 11.5, y: 12.5, kind: 'battery' },
+            { x: 11.5, y: 18.5, kind: 'ammo' }
+        ],
+        props: [
+            { x: 9.5, y: 13.5 }, { x: 13.5, y: 13.5 }, { x: 9.5, y: 17.5 }, { x: 13.5, y: 17.5 }
+        ]
+    }
+];
+
+const WHISPERS = [
+    "ЧЕМ ГЛУБЖЕ ТЫ СПУСКАЕШЬСЯ, ТЕМ БЛИЖЕ ОНИ...",
+    "НЕ ВЫКЛЮЧАЙ СВЕТ... ОНИ ЧУЮТ СТРАХ.",
+    "НАЖМИ [R], ЧТОБЫ ПОДКАЧАТЬ ДИНАМО-МАШИНУ...",
+    "ЭТОТ УРОВЕНЬ СТАНЕТ ТВОЕЙ ГРОБНИЦЕЙ.",
+    "ОНИ СМОТРЯТ НА ТЕБЯ ИЗ ТЕМНОТЫ."
+];
+
+// ==========================================
+// 4. СОСТОЯНИЕ ИГРЫ И ЗАГРУЗКА УРОВНЕЙ
+// ==========================================
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+const HUD_H = 42;
+const VIEW_H = H - HUD_H;
+
+const frameBuffer = ctx.createImageData(W, VIEW_H);
+const pixels = frameBuffer.data;
+const zBuffer = new Float32Array(W);
+
+let currentLevelIdx = 0;
+let levelCheckpoint = null; // Сохранение арсенала на начало уровня
+
+let map = [];
+let player = {};
+let enemies = [];
+let pickups = [];
+let props = [];
+let projectiles = [];
+let particles = [];
+
+let keys = {};
+let mouseDown = false;
+let mouseSensitivity = 2.2;
+let gameState = 'MENU'; // MENU, PLAY, INTERMISSION, DEAD, WIN
+let showAutomap = false;
+let currentMessage = "";
+let messageTimer = 0;
+let flashAlpha = 0;
+let flashColor = '#a00';
+let muzzleLight = 0;
+let bobPhase = 0;
+let stepCounter = 0;
+let heartbeatTimer = 0;
+let creepTimer = 7;
+let secretsFound = 0;
+let totalSecrets = 1;
+let killsCount = 0;
+let totalEnemies = 0;
+let levelTime = 0;
+
+const sensSlider = document.getElementById('sens-slider');
+const sensVal = document.getElementById('sens-slider') ? document.getElementById('sens-val') : null;
+sensSlider.addEventListener('input', () => {
+    mouseSensitivity = parseFloat(sensSlider.value);
+    sensVal.textContent = mouseSensitivity.toFixed(1);
+});
+
+function showHudMessage(txt, duration = 3.5) {
+    currentMessage = txt;
+    messageTimer = duration;
+}
+
+function getEnemyBaseStats(type, isArchon = false) {
+    if (type === 0) return { hp: 45,  speed: 1.48 }; // Истязаемый
+    if (type === 1) return { hp: 75,  speed: 1.75 }; // Свежеватель
+    if (type === 2) return { hp: 145, speed: 2.38 }; // Чрево
+    if (type === 3) return { hp: 95,  speed: 2.95 }; // Тень Пустоты (очень быстрая!)
+    if (isArchon)   return { hp: 520, speed: 1.65 }; // Архонт Безысходности
+    return { hp: 290, speed: 1.45 };                 // Амальгама (мини-босс)
+}
+
+function loadLevel(lvlIdx, isRetry = false) {
+    currentLevelIdx = lvlIdx;
+    const lvl = LEVELS[lvlIdx];
+    sfx.setAmbientDepth(lvlIdx);
+
+    map = lvl.map.map(row => [...row]);
+
+    if (lvlIdx === 0 && !isRetry) {
+        // Новый старт кампании
+        player = {
+            x: lvl.start.x,
+            y: lvl.start.y,
+            dirX: lvl.start.dirX,
+            dirY: lvl.start.dirY,
+            planeX: lvl.start.planeX,
+            planeY: lvl.start.planeY,
+            pitch: 0,
+            swayX: 0,
+            swayY: 0,
+            hp: 100,
+            sanity: 100,
+            ammo: 32,
+            flashlightOn: true,
+            battery: 100,
+            weapon: 1,
+            ownedWeapons: [true, true, false, false, false],
+            attackCooldown: 0,
+            recoil: 0
+        };
+    } else if (isRetry && levelCheckpoint) {
+        // Перезапуск текущего уровня после смерти
+        player = {
+            ...levelCheckpoint,
+            x: lvl.start.x,
+            y: lvl.start.y,
+            dirX: lvl.start.dirX,
+            dirY: lvl.start.dirY,
+            planeX: lvl.start.planeX,
+            planeY: lvl.start.planeY,
+            pitch: 0,
+            swayX: 0,
+            swayY: 0,
+            hp: Math.max(75, levelCheckpoint.hp),
+            sanity: 100,
+            battery: Math.max(80, levelCheckpoint.battery),
+            ammo: Math.max(24, levelCheckpoint.ammo),
+            ownedWeapons: [...levelCheckpoint.ownedWeapons],
+            flashlightOn: true,
+            attackCooldown: 0,
+            recoil: 0
+        };
+    } else {
+        // Переход на следующий уровень с сохранением снаряжения
+        player.x = lvl.start.x;
+        player.y = lvl.start.y;
+        player.dirX = lvl.start.dirX;
+        player.dirY = lvl.start.dirY;
+        player.planeX = lvl.start.planeX;
+        player.planeY = lvl.start.planeY;
+        player.pitch = 0;
+        player.swayX = 0;
+        player.swayY = 0;
+        player.hp = Math.min(100, player.hp + 25); // Небольшая передышка между уровнями
+        player.battery = Math.min(100, player.battery + 30);
+        player.attackCooldown = 0;
+        player.recoil = 0;
+    }
+
+    // Сохраняем чекпоинт в начале уровня
+    levelCheckpoint = {
+        hp: player.hp,
+        sanity: player.sanity,
+        ammo: player.ammo,
+        battery: player.battery,
+        weapon: player.weapon,
+        ownedWeapons: [...player.ownedWeapons]
+    };
+
+    enemies = lvl.enemies.map(e => {
+        const st = getEnemyBaseStats(e.type, e.isArchon);
+        const scaledHp = Math.round(st.hp * (1 + lvlIdx * 0.12));
+        return {
+            x: e.x,
+            y: e.y,
+            type: e.type,
+            isArchon: !!e.isArchon,
+            hp: scaledHp,
+            maxHp: scaledHp,
+            speed: st.speed * lvl.speedMult,
+            state: 'idle',
+            timer: 0,
+            hurtTimer: 0
+        };
+    });
+
+    totalEnemies = enemies.length;
+    killsCount = 0;
+    secretsFound = 0;
+    totalSecrets = 0;
+    for (let r = 0; r < map.length; r++) {
+        for (let c = 0; c < map[0].length; c++) {
+            if (map[r][c] === 9) totalSecrets++;
+        }
+    }
+
+    pickups = lvl.pickups.map(p => ({ ...p, taken: false }));
+    props = lvl.props.map(p => ({ ...p }));
+    projectiles = [];
+    particles = [];
+    levelTime = 0;
+
+    showHudMessage(`${lvl.title} // УНИЧТОЖЬ ИХ ВСЕХ`, 4.5);
+}
+
+// ==========================================
+// 5. УПРАВЛЕНИЕ КАМЕРОЙ И ОРУЖИЕМ
+// ==========================================
+window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (gameState !== 'PLAY') return;
+
+    if (e.code === 'Digit1') player.weapon = 0;
+    if (e.code === 'Digit2' && player.ownedWeapons[1]) player.weapon = 1;
+    if (e.code === 'Digit3' && player.ownedWeapons[2]) player.weapon = 2;
+    if (e.code === 'Digit4' && player.ownedWeapons[3]) player.weapon = 3;
+    if (e.code === 'Digit5' && player.ownedWeapons[4]) player.weapon = 4;
+
+    if (e.code === 'KeyF') toggleFlashlight();
+    if (e.code === 'KeyR') crankDynamo();
+    if (e.code === 'KeyE' || e.code === 'Space') interactWithWorld();
+
+    if (e.code === 'KeyM' || e.code === 'Tab') {
+        e.preventDefault();
+        showAutomap = !showAutomap;
+    }
+    if (e.code === 'BracketLeft') {
+        mouseSensitivity = Math.max(0.5, mouseSensitivity - 0.2);
+        sensSlider.value = mouseSensitivity;
+        sensVal.textContent = mouseSensitivity.toFixed(1);
+        showHudMessage(`ЧУВСТВИТЕЛЬНОСТЬ МЫШИ: ${mouseSensitivity.toFixed(1)}`, 1.5);
+    }
+    if (e.code === 'BracketRight') {
+        mouseSensitivity = Math.min(5.0, mouseSensitivity + 0.2);
+        sensSlider.value = mouseSensitivity;
+        sensVal.textContent = mouseSensitivity.toFixed(1);
+        showHudMessage(`ЧУВСТВИТЕЛЬНОСТЬ МЫШИ: ${mouseSensitivity.toFixed(1)}`, 1.5);
+    }
+});
+
+window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+});
+
+// Переключение оружия колесиком мыши
+window.addEventListener('wheel', e => {
+    if (gameState !== 'PLAY') return;
+    const dir = Math.sign(e.deltaY);
+    let nextW = player.weapon;
+    for (let i = 0; i < 5; i++) {
+        nextW = (nextW - dir + 5) % 5;
+        if (player.ownedWeapons[nextW]) {
+            player.weapon = nextW;
+            break;
+        }
+    }
+});
+
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+window.addEventListener('mousemove', e => {
+    if (gameState !== 'PLAY' || document.pointerLockElement !== canvas) return;
+
+    const yawDelta = e.movementX * 0.0014 * mouseSensitivity;
+    rotatePlayer(yawDelta);
+
+    const pitchDelta = -e.movementY * 0.35 * mouseSensitivity;
+    player.pitch = Math.max(-VIEW_H * 0.38, Math.min(VIEW_H * 0.38, player.pitch + pitchDelta));
+
+    player.swayX = Math.max(-28, Math.min(28, player.swayX + e.movementX * 0.35));
+    player.swayY = Math.max(-20, Math.min(20, player.swayY + e.movementY * 0.35));
+});
+
+window.addEventListener('mousedown', e => {
+    if (gameState !== 'PLAY') return;
+    if (document.pointerLockElement !== canvas) {
+        canvas.requestPointerLock();
+        return;
+    }
+    if (e.button === 0) {
+        mouseDown = true;
+        fireWeapon();
+    } else if (e.button === 2) {
+        toggleFlashlight();
+    }
+});
+
+window.addEventListener('mouseup', e => {
+    if (e.button === 0) mouseDown = false;
+});
+
+function rotatePlayer(angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const oldDirX = player.dirX;
+    player.dirX = player.dirX * cos - player.dirY * sin;
+    player.dirY = oldDirX * sin + player.dirY * cos;
+
+    const oldPlaneX = player.planeX;
+    player.planeX = player.planeX * cos - player.planeY * sin;
+    player.planeY = oldPlaneX * sin + player.planeY * cos;
+}
+
+function toggleFlashlight() {
+    if (player.battery <= 0 && !player.flashlightOn) {
+        sfx.playFlashlightClick(false);
+        showHudMessage("БАТАРЕЯ ПУСТА! НАЖМИ [R], ЧТОБЫ ПОДКАЧАТЬ ДИНАМО!", 3.0);
+        return;
+    }
+    player.flashlightOn = !player.flashlightOn;
+    sfx.playFlashlightClick(player.flashlightOn);
+}
+
+function crankDynamo() {
+    player.battery = Math.min(100, player.battery + 22);
+    player.recoil = 0.45;
+    sfx.playDynamoCrank();
+    if (!player.flashlightOn && player.battery > 10) {
+        player.flashlightOn = true;
+    }
+    showHudMessage(`ДИНАМО-МАШИНА: ЗАРЯД ФОНАРИКА ${player.battery | 0}%`, 1.8);
+}
+
+function interactWithWorld() {
+    const checkX = Math.floor(player.x + player.dirX * 1.15);
+    const checkY = Math.floor(player.y + player.dirY * 1.15);
+    if (checkY < 0 || checkY >= map.length || checkX < 0 || checkX >= map[0].length) return;
+
+    const tile = map[checkY][checkX];
+
+    if (tile === 4) {
+        map[checkY][checkX] = 0;
+        sfx.playDoor();
+        showHudMessage("ГЕРМОЗАТВОР ОТКРЫТ.", 2.5);
+    } else if (tile === 5) {
+        sfx.playFlashlightClick(false);
+        showHudMessage("ШЛЮЗ ЗАБЛОКИРОВАН. Найди и активируй рубильник.", 3.5);
+    } else if (tile === 6) {
+        map[checkY][checkX] = 7;
+        for (let y = 0; y < map.length; y++) {
+            for (let x = 0; x < map[0].length; x++) {
+                if (map[y][x] === 5) map[y][x] = 0;
+            }
+        }
+        // На более высоких уровнях нажатие рубильника пробуждает ближайших врагов!
+        for (const e of enemies) {
+            if (e.state === 'idle' && Math.hypot(e.x - player.x, e.y - player.y) < 12) {
+                e.state = 'chase';
+            }
+        }
+        sfx.playDoor();
+        flashColor = '#fff';
+        flashAlpha = 0.45;
+        showHudMessage("ГЛАВНЫЙ ШЛЮЗ К ВЫХОДУ РАЗБЛОКИРОВАН!", 4.0);
+    } else if (tile === 9) {
+        map[checkY][checkX] = 0;
+        secretsFound++;
+        sfx.playDoor();
+        showHudMessage("ОБНАРУЖЕН СЕКРЕТНЫЙ ОТСЕК!", 4.0);
+    } else if (tile === 8) {
+        completeCurrentLevel();
+    }
+}
+
+// ==========================================
+// 6. БОЕВАЯ СИСТЕМА, ЧАСТИЦЫ И ИИ ВРАГОВ
+// ==========================================
+function spawnParticles(x, y, count, colorType) {
+    for (let i = 0; i < count; i++) {
+        let col = [255, 210, 90];
+        if (colorType === 'blood') col = [195 + (Math.random() * 50) | 0, 10, 10];
+        else if (colorType === 'plasma') col = [120, 245, 255];
+
+        particles.push({
+            x: x + (Math.random() - 0.5) * 0.25,
+            y: y + (Math.random() - 0.5) * 0.25,
+            z: (Math.random() - 0.3) * 0.4,
+            vx: (Math.random() - 0.5) * 2.4,
+            vy: (Math.random() - 0.5) * 2.4,
+            vz: Math.random() * 1.6,
+            life: 0.35 + Math.random() * 0.35,
+            color: col
+        });
+    }
+}
+
+function fireWeapon() {
+    if (player.attackCooldown > 0) return;
+
+    let w = WEAPON_DATA[player.weapon];
+    if (player.ammo < w.ammoUse) {
+        if (player.weapon !== 0) {
+            player.weapon = 0;
+            w = WEAPON_DATA[0];
+            showHudMessage("ПАТРОНЫ ИССЯКЛИ! В РУКАХ РЖАВАЯ ТРУБА.", 2.5);
+        }
+    }
+
+    player.ammo -= w.ammoUse;
+    player.attackCooldown = w.delay;
+    player.recoil = 1.0;
+    if (player.weapon > 0) muzzleLight = player.weapon === 4 ? 1.45 : 1.0;
+
+    const hearDist = player.weapon === 0 ? 3.5 : 12.5;
+    for (const e of enemies) {
+        if (e.state === 'idle' && Math.hypot(e.x - player.x, e.y - player.y) < hearDist) {
+            e.state = 'chase';
+        }
+    }
+
+    let hitOutcome = 'none';
+    for (let p = 0; p < w.pellets; p++) {
+        const spreadAngle = (Math.random() - 0.5) * w.spread;
+        const rayDirX = player.dirX * Math.cos(spreadAngle) - player.dirY * Math.sin(spreadAngle);
+        const rayDirY = player.dirX * Math.sin(spreadAngle) + player.dirY * Math.cos(spreadAngle);
+
+        const res = castBulletRay(rayDirX, rayDirY, w.range, w.dmg, player.weapon === 4);
+        if (res === 'flesh') hitOutcome = 'flesh';
+        else if (res === 'wall' && hitOutcome === 'none') hitOutcome = 'wall';
+    }
+
+    sfx.playWeapon(player.weapon, hitOutcome);
+}
+
+function castBulletRay(dirX, dirY, maxDist, damage, isPlasma) {
+    const step = 0.06;
+    let dist = 0;
+    while (dist < maxDist) {
+        dist += step;
+        const rx = player.x + dirX * dist;
+        const ry = player.y + dirY * dist;
+
+        if (map[Math.floor(ry)][Math.floor(rx)] > 0) {
+            spawnParticles(rx - dirX * 0.1, ry - dirY * 0.1, isPlasma ? 8 : 4, isPlasma ? 'plasma' : 'sparks');
+            return 'wall';
+        }
+
+        for (const e of enemies) {
+            if (e.state === 'dead') continue;
+            if (Math.hypot(e.x - rx, e.y - ry) < 0.45) {
+                e.hp -= damage;
+                e.hurtTimer = 0.2;
+                e.state = 'chase';
+                spawnParticles(rx, ry, isPlasma ? 12 : 8, 'blood');
+                if (e.hp <= 0) {
+                    e.state = 'dead';
+                    killsCount++;
+                    player.sanity = Math.min(100, player.sanity + 5);
+                    sfx.playMonsterSound(e.type, dist);
+                }
+                return 'flesh';
+            }
+        }
+    }
+    return 'none';
+}
+
+function hasLineOfSight(x1, y1, x2, y2) {
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.ceil(dist / 0.25);
+    const dx = (x2 - x1) / steps;
+    const dy = (y2 - y1) / steps;
+    for (let i = 1; i < steps; i++) {
+        if (map[Math.floor(y1 + dy * i)][Math.floor(x1 + dx * i)] > 0) return false;
+    }
+    return true;
+}
+
+function damagePlayer(amount) {
+    player.hp -= amount;
+    player.sanity = Math.max(0, player.sanity - amount * 0.5);
+    player.pitch += (Math.random() - 0.5) * 28;
+    flashColor = '#b00';
+    flashAlpha = 0.72;
+    sfx.playHurt();
+
+    if (player.hp <= 0) {
+        player.hp = 0;
+        dieGame();
+    }
+}
+
+// ==========================================
+// 7. ОБНОВЛЕНИЕ МИРА (UPDATE LOOP)
+// ==========================================
+function update(dt) {
+    if (gameState !== 'PLAY') return;
+
+    levelTime += dt;
+
+    if (player.attackCooldown > 0) player.attackCooldown -= dt;
+    if (mouseDown && (player.weapon === 3 || player.weapon === 4) && player.attackCooldown <= 0) {
+        fireWeapon();
+    }
+
+    if (player.recoil > 0) player.recoil = Math.max(0, player.recoil - dt * 4.5);
+    if (muzzleLight > 0) muzzleLight = Math.max(0, muzzleLight - dt * 8.0);
+    if (flashAlpha > 0) flashAlpha = Math.max(0, flashAlpha - dt * 1.9);
+    if (messageTimer > 0) messageTimer -= dt;
+
+    player.swayX *= Math.pow(0.001, dt);
+    player.swayY *= Math.pow(0.001, dt);
+
+    const drainRate = LEVELS[currentLevelIdx].batteryDrain;
+    if (player.flashlightOn) {
+        player.battery = Math.max(0, player.battery - dt * drainRate);
+        if (player.battery <= 0) {
+            player.flashlightOn = false;
+            sfx.playFlashlightClick(false);
+            showHudMessage("ФОНАРИК ПОГАС! НАЖМИ [R], ЧТОБЫ ПОДКАЧАТЬ ДИНАМО!", 3.5);
+        }
+    } else {
+        player.sanity = Math.max(0, player.sanity - dt * (1.2 + currentLevelIdx * 0.3));
+    }
+
+    creepTimer -= dt;
+    if (creepTimer <= 0) {
+        creepTimer = 7 + Math.random() * 8;
+        sfx.playRandomCreep();
+        if (messageTimer <= 0 && Math.random() < 0.65) {
+            showHudMessage(WHISPERS[Math.floor(Math.random() * WHISPERS.length)], 3.2);
+        }
+    }
+
+    if (player.hp <= 35) {
+        heartbeatTimer -= dt;
+        if (heartbeatTimer <= 0) {
+            heartbeatTimer = 0.85;
+            sfx.playHeartbeat();
+            flashColor = '#500';
+            flashAlpha = 0.25;
+        }
+    }
+
+    const keyRotSpeed = 2.1 * dt;
+    if (keys['ArrowLeft']) rotatePlayer(-keyRotSpeed);
+    if (keys['ArrowRight']) rotatePlayer(keyRotSpeed);
+    if (keys['ArrowUp']) player.pitch = Math.min(VIEW_H * 0.38, player.pitch + 140 * dt);
+    if (keys['ArrowDown']) player.pitch = Math.max(-VIEW_H * 0.38, player.pitch - 140 * dt);
+
+    const moveSpeed = 3.4 * dt;
+    let moveX = 0, moveY = 0;
+    if (keys['KeyW']) { moveX += player.dirX * moveSpeed; moveY += player.dirY * moveSpeed; }
+    if (keys['KeyS']) { moveX -= player.dirX * moveSpeed; moveY -= player.dirY * moveSpeed; }
+    if (keys['KeyA']) { moveX -= player.planeX * moveSpeed; moveY -= player.planeY * moveSpeed; }
+    if (keys['KeyD']) { moveX += player.planeX * moveSpeed; moveY += player.planeY * moveSpeed; }
+
+    if (moveX !== 0 || moveY !== 0) {
+        const oldBob = Math.floor(bobPhase / Math.PI);
+        bobPhase += dt * 9.5;
+        const newBob = Math.floor(bobPhase / Math.PI);
+        if (newBob !== oldBob) {
+            stepCounter++;
+            sfx.playFootstep(stepCounter);
+        }
+
+        const margin = 0.28;
+        if (map[Math.floor(player.y)][Math.floor(player.x + moveX + Math.sign(moveX) * margin)] === 0) {
+            player.x += moveX;
+        }
+        if (map[Math.floor(player.y + moveY + Math.sign(moveY) * margin)][Math.floor(player.x)] === 0) {
+            player.y += moveY;
+        }
+    }
+
+    // Подбор предметов
+    for (const item of pickups) {
+        if (item.taken) continue;
+        if (Math.hypot(item.x - player.x, item.y - player.y) < 0.68) {
+            if (item.kind === 'medkit' && player.hp < 100) {
+                player.hp = Math.min(100, player.hp + 35);
+                player.sanity = Math.min(100, player.sanity + 15);
+                item.taken = true;
+                sfx.playPickup();
+                flashColor = '#151';
+                flashAlpha = 0.25;
+                showHudMessage("ИНЪЕКЦИЯ МОРФИНА (+35 ЗДОРОВЬЯ)", 2.5);
+            } else if (item.kind === 'ammo') {
+                player.ammo += 18;
+                item.taken = true;
+                sfx.playPickup();
+                showHudMessage("ПОДОБРАНЫ БОЕПРИПАСЫ (+18)", 2.5);
+            } else if (item.kind === 'battery') {
+                player.battery = 100;
+                player.flashlightOn = true;
+                item.taken = true;
+                sfx.playPickup();
+                showHudMessage("АККУМУЛЯТОР ФОНАРИКА (100%)", 2.5);
+            } else if (item.kind === 'shotgun') {
+                player.ownedWeapons[2] = true;
+                player.weapon = 2;
+                player.ammo += 12;
+                item.taken = true;
+                sfx.playPickup();
+                showHudMessage("ПОЛУЧЕН ДВУСТВОЛЬНЫЙ ОБРЕЗ [3]!", 3.5);
+            } else if (item.kind === 'nailgun') {
+                player.ownedWeapons[3] = true;
+                player.weapon = 3;
+                player.ammo += 40;
+                item.taken = true;
+                sfx.playPickup();
+                showHudMessage("ПОЛУЧЕН ГВОЗДЕМЕТ «АГОНИЯ» [4]!", 3.5);
+            } else if (item.kind === 'plasmagun') {
+                player.ownedWeapons[4] = true;
+                player.weapon = 4;
+                player.ammo += 36;
+                item.taken = true;
+                sfx.playPickup();
+                flashColor = '#08a';
+                flashAlpha = 0.35;
+                showHudMessage("ПОЛУЧЕН «ИСПЕПЕЛИТЕЛЬ БЕЗДНЫ» [5]!", 4.0);
+            }
+        }
+    }
+
+    // ИИ врагов (с прогрессирующей агрессией по уровням)
+    for (const e of enemies) {
+        if (e.state === 'dead') continue;
+        if (e.hurtTimer > 0) e.hurtTimer -= dt;
+
+        const dist = Math.hypot(player.x - e.x, player.y - e.y);
+        const detectRange = player.flashlightOn ? 14.0 : 7.0;
+        const canSee = dist < detectRange && hasLineOfSight(e.x, e.y, player.x, player.y);
+
+        if (e.state === 'idle') {
+            if (canSee || dist < 2.4) {
+                e.state = 'chase';
+                sfx.playMonsterSound(e.type, dist);
+            }
+        } else if (e.state === 'chase') {
+            e.timer -= dt;
+            if (Math.random() < 0.006) sfx.playMonsterSound(e.type, dist);
+
+            if (dist > 0.95) {
+                let dirX = (player.x - e.x) / dist;
+                let dirY = (player.y - e.y) / dist;
+
+                // Тень Пустоты (type 3) двигается зигзагами, уклоняясь от прицела!
+                if (e.type === 3 && dist > 2.0) {
+                    const weave = Math.sin(levelTime * 6 + e.x) * 0.55;
+                    const perpX = -dirY * weave;
+                    const perpY = dirX * weave;
+                    dirX += perpX;
+                    dirY += perpY;
+                }
+
+                const vx = dirX * e.speed * dt;
+                const vy = dirY * e.speed * dt;
+                if (map[Math.floor(e.y)][Math.floor(e.x + vx * 2.2)] === 0) e.x += vx;
+                if (map[Math.floor(e.y + vy * 2.2)][Math.floor(e.x)] === 0) e.y += vy;
+            }
+
+            // Ближний бой
+            if (dist < 1.28 && e.timer <= 0) {
+                e.timer = Math.max(0.65, 1.05 - currentLevelIdx * 0.08);
+                const baseDmg = e.type === 2 ? 22 : (e.type === 3 ? 20 : (e.type === 4 ? 30 : 13));
+                damagePlayer(baseDmg + currentLevelIdx * 2);
+            }
+
+            // Дальний бой для Свежевателей (1) и Боссов (4)
+            if ((e.type === 1 || e.type === 4) && canSee && dist >= 2.2 && e.timer <= 0) {
+                e.timer = Math.max(0.8, (e.type === 4 ? 1.25 : 2.1) - currentLevelIdx * 0.12);
+                const pSpeed = 5.4 + currentLevelIdx * 0.5;
+                const baseAngle = Math.atan2(player.y - e.y, player.x - e.x);
+
+                // Финальный босс Архонт стреляет сразу веером из 3 адских сфер!
+                const shots = e.isArchon ? [-0.22, 0, 0.22] : [0];
+                for (const offset of shots) {
+                    const ang = baseAngle + offset;
+                    projectiles.push({
+                        x: e.x,
+                        y: e.y,
+                        vx: Math.cos(ang) * pSpeed,
+                        vy: Math.sin(ang) * pSpeed,
+                        dmg: (e.type === 4 ? 20 : 14) + currentLevelIdx * 2
+                    });
+                }
+                sfx.playMonsterSound(1, dist);
+            }
+        }
+    }
+
+    // Обновление снарядов
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+
+        if (map[Math.floor(p.y)][Math.floor(p.x)] > 0) {
+            spawnParticles(p.x, p.y, 6, 'blood');
+            projectiles.splice(i, 1);
+            continue;
+        }
+        if (Math.hypot(p.x - player.x, p.y - player.y) < 0.45) {
+            damagePlayer(p.dmg);
+            projectiles.splice(i, 1);
+        }
+    }
+
+    // Обновление 3D-частиц
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const pt = particles[i];
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.z -= pt.vz * dt;
+        pt.vz -= 4.5 * dt;
+        pt.life -= dt;
+        if (pt.life <= 0) particles.splice(i, 1);
+    }
+}
+
+// ==========================================
+// 8. 3D-РЕЙКАСТЕР С ОБЪЕМНЫМ ФОНАРИКОМ
+// ==========================================
+function computeFlashlightFactor(screenX, screenY, dist) {
+    // На более глубоких уровнях базовая видимость без фонарика еще ниже
+    const ambientBase = Math.max(0.08, 0.22 - currentLevelIdx * 0.04);
+    let light = (ambientBase + muzzleLight * 3.8) / (1.0 + dist * dist * 0.35);
+
+    if (player.flashlightOn) {
+        let flicker = 1.0;
+        if (player.battery < 22 && Math.random() < 0.25) {
+            flicker = 0.25;
+        }
+
+        const beamCenterX = W * 0.5 - player.swayX * 1.4;
+        const beamCenterY = VIEW_H * 0.5 - player.swayY * 1.4;
+
+        const dx = (screenX - beamCenterX) / (VIEW_H * 0.48);
+        const dy = (screenY - beamCenterY) / (VIEW_H * 0.48);
+        const rSq = dx * dx + dy * dy;
+
+        if (rSq < 0.85) {
+            const spot = rSq < 0.14 ? 1.35 : Math.max(0, (0.85 - rSq) / 0.71) * 0.85;
+            const atten = 1.0 / (1.0 + dist * 0.11 + dist * dist * 0.028);
+            light += spot * atten * 2.15 * flicker;
+        }
+    }
+    return Math.min(1.35, light);
+}
+
+function renderWorld(now) {
+    const bobOffset = Math.sin(bobPhase) * 4.5 - player.recoil * 9;
+    const horizon = Math.max(10, Math.min(VIEW_H - 10, (VIEW_H * 0.5 + player.pitch + bobOffset) | 0));
+
+    const rayDirX0 = player.dirX - player.planeX;
+    const rayDirY0 = player.dirY - player.planeY;
+    const rayDirX1 = player.dirX + player.planeX;
+    const rayDirY1 = player.dirY + player.planeY;
+
+    // 1. ПОЛ И ПОТОЛОК
+    const posZ = 0.5 * VIEW_H;
+    for (let y = 0; y < VIEW_H; y++) {
+        const isFloor = y > horizon;
+        const p = isFloor ? (y - horizon) : (horizon - y);
+        if (p === 0) continue;
+
+        const rowDistance = posZ / p;
+        const floorStepX = rowDistance * (rayDirX1 - rayDirX0) / W;
+        const floorStepY = rowDistance * (rayDirY1 - rayDirY0) / W;
+
+        let floorX = player.x + rowDistance * rayDirX0;
+        let floorY = player.y + rowDistance * rayDirY0;
+
+        const tex = isFloor ? floorTextures[0] : floorTextures[1];
+        let pIdx = y * W * 4;
+
+        for (let x = 0; x < W; x++) {
+            const tx = ((floorX * TEX_SIZE) | 0) & TEX_MASK;
+            const ty = ((floorY * TEX_SIZE) | 0) & TEX_MASK;
+            floorX += floorStepX;
+            floorY += floorStepY;
+
+            const tIdx = (ty * TEX_SIZE + tx) * 4;
+            const shade = computeFlashlightFactor(x, y, rowDistance);
+
+            pixels[pIdx]     = (tex[tIdx]     * shade) | 0;
+            pixels[pIdx + 1] = (tex[tIdx + 1] * shade) | 0;
+            pixels[pIdx + 2] = (tex[tIdx + 2] * shade) | 0;
+            pixels[pIdx + 3] = 255;
+            pIdx += 4;
+        }
+    }
+
+    // 2. СТЕНЫ
+    for (let x = 0; x < W; x++) {
+        const cameraX = 2 * x / W - 1;
+        const rayDirX = player.dirX + player.planeX * cameraX;
+        const rayDirY = player.dirY + player.planeY * cameraX;
+
+        let mapX = Math.floor(player.x);
+        let mapY = Math.floor(player.y);
+
+        const deltaDistX = Math.abs(1 / (rayDirX || 1e-30));
+        const deltaDistY = Math.abs(1 / (rayDirY || 1e-30));
+
+        let stepX, stepY, sideDistX, sideDistY;
+        if (rayDirX < 0) {
+            stepX = -1;
+            sideDistX = (player.x - mapX) * deltaDistX;
+        } else {
+            stepX = 1;
+            sideDistX = (mapX + 1.0 - player.x) * deltaDistX;
+        }
+        if (rayDirY < 0) {
+            stepY = -1;
+            sideDistY = (player.y - mapY) * deltaDistY;
+        } else {
+            stepY = 1;
+            sideDistY = (mapY + 1.0 - player.y) * deltaDistY;
+        }
+
+        let hit = 0, side = 0;
+        while (hit === 0) {
+            if (sideDistX < sideDistY) {
+                sideDistX += deltaDistX;
+                mapX += stepX;
+                side = 0;
+            } else {
+                sideDistY += deltaDistY;
+                mapY += stepY;
+                side = 1;
+            }
+            if (map[mapY][mapX] > 0) hit = map[mapY][mapX];
+        }
+
+        const perpWallDist = Math.max(0.05, side === 0 ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY));
+        zBuffer[x] = perpWallDist;
+
+        const lineHeight = (VIEW_H / perpWallDist) | 0;
+        const drawStart = Math.max(0, (-lineHeight * 0.5 + horizon) | 0);
+        const drawEnd = Math.min(VIEW_H - 1, (lineHeight * 0.5 + horizon) | 0);
+
+        let wallX = side === 0 ? (player.y + perpWallDist * rayDirY) : (player.x + perpWallDist * rayDirX);
+        wallX -= Math.floor(wallX);
+
+        let texX = (wallX * TEX_SIZE) | 0;
+        if ((side === 0 && rayDirX > 0) || (side === 1 && rayDirY < 0)) {
+            texX = TEX_SIZE - texX - 1;
+        }
+
+        const tex = wallTextures[hit] || wallTextures[1];
+        const step = TEX_SIZE / lineHeight;
+        let texPos = (drawStart - horizon + lineHeight * 0.5) * step;
+        const sideFactor = side === 1 ? 0.76 : 1.0;
+        const emissiveWall = (hit === 8 || hit === 6 || hit === 7) ? 0.35 : 0;
+
+        for (let y = drawStart; y <= drawEnd; y++) {
+            const texY = (texPos | 0) & TEX_MASK;
+            texPos += step;
+
+            const shade = (computeFlashlightFactor(x, y, perpWallDist) + emissiveWall) * sideFactor;
+            const tIdx = (texY * TEX_SIZE + texX) * 4;
+            const pIdx = (y * W + x) * 4;
+
+            pixels[pIdx]     = (tex[tIdx]     * shade) | 0;
+            pixels[pIdx + 1] = (tex[tIdx + 1] * shade) | 0;
+            pixels[pIdx + 2] = (tex[tIdx + 2] * shade) | 0;
+        }
+    }
+
+    // 3. СПРАЙТЫ МОНСТРОВ И ПРЕДМЕТОВ
+    const animFrame = ((now * 0.005) | 0) % 2;
+    const allSprites = [];
+
+    for (const e of enemies) {
+        let tex;
+        if (e.state === 'dead') {
+            tex = spriteTextures[`corpse${e.type}`];
+        } else if (e.hurtTimer > 0) {
+            tex = spriteTextures[`m${e.type}_hurt`];
+        } else {
+            tex = spriteTextures[`m${e.type}_${animFrame}`];
+        }
+        allSprites.push({ x: e.x, y: e.y, tex, fullBright: false });
+    }
+    for (const item of pickups) {
+        if (!item.taken) allSprites.push({ x: item.x, y: item.y, tex: spriteTextures[item.kind], fullBright: false });
+    }
+    for (const p of props) {
+        allSprites.push({ x: p.x, y: p.y, tex: spriteTextures.pillar, fullBright: false });
+    }
+    for (const pr of projectiles) {
+        allSprites.push({ x: pr.x, y: pr.y, tex: spriteTextures.fireball, fullBright: true });
+    }
+
+    for (const s of allSprites) {
+        s.dist = (player.x - s.x) ** 2 + (player.y - s.y) ** 2;
+    }
+    allSprites.sort((a, b) => b.dist - a.dist);
+
+    const invDet = 1.0 / (player.planeX * player.dirY - player.dirX * player.planeY);
+
+    for (const s of allSprites) {
+        const spriteX = s.x - player.x;
+        const spriteY = s.y - player.y;
+
+        const transformX = invDet * (player.dirY * spriteX - player.dirX * spriteY);
+        const transformY = invDet * (-player.planeY * spriteX + player.planeX * spriteY);
+
+        if (transformY <= 0.12) continue;
+
+        const spriteScreenX = ((W * 0.5) * (1 + transformX / transformY)) | 0;
+        const spriteHeight = Math.abs((VIEW_H / transformY) | 0);
+        const spriteWidth = spriteHeight;
+
+        const drawStartY = Math.max(0, (-spriteHeight * 0.5 + horizon) | 0);
+        const drawEndY = Math.min(VIEW_H - 1, (spriteHeight * 0.5 + horizon) | 0);
+        const drawStartX = Math.max(0, (-spriteWidth * 0.5 + spriteScreenX) | 0);
+        const drawEndX = Math.min(W - 1, (spriteWidth * 0.5 + spriteScreenX) | 0);
+
+        for (let stripe = drawStartX; stripe < drawEndX; stripe++) {
+            if (transformY < zBuffer[stripe]) {
+                const texX = (((stripe - (-spriteWidth * 0.5 + spriteScreenX)) * TEX_SIZE / spriteWidth) | 0) & TEX_MASK;
+
+                for (let y = drawStartY; y < drawEndY; y++) {
+                    const d = y - horizon + spriteHeight * 0.5;
+                    const texY = (((d * TEX_SIZE) / spriteHeight) | 0) & TEX_MASK;
+                    const tIdx = (texY * TEX_SIZE + texX) * 4;
+
+                    if (s.tex[tIdx + 3] > 128) {
+                        const r = s.tex[tIdx];
+                        const g = s.tex[tIdx + 1];
+                        const b = s.tex[tIdx + 2];
+
+                        const isGlowingEye = (r === 255 && g === 0 && b === 0) || (r === 255 && g === 250 && b === 0);
+                        const shade = (s.fullBright || isGlowingEye) ? 1.0 : computeFlashlightFactor(stripe, y, transformY);
+
+                        const pIdx = (y * W + stripe) * 4;
+                        pixels[pIdx]     = (r * shade) | 0;
+                        pixels[pIdx + 1] = (g * shade) | 0;
+                        pixels[pIdx + 2] = (b * shade) | 0;
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. 3D-ЧАСТИЦЫ
+    for (const pt of particles) {
+        const px = pt.x - player.x;
+        const py = pt.y - player.y;
+        const tx = invDet * (player.dirY * px - player.dirX * py);
+        const ty = invDet * (-player.planeY * px + player.planeX * py);
+        if (ty <= 0.15) continue;
+
+        const sx = ((W * 0.5) * (1 + tx / ty)) | 0;
+        const sy = (horizon + (pt.z * VIEW_H) / ty) | 0;
+        const size = Math.max(1, (3 / ty) | 0);
+
+        if (sx >= 0 && sx < W - size && sy >= 0 && sy < VIEW_H - size && ty < zBuffer[sx]) {
+            for (let dy = 0; dy < size; dy++) {
+                for (let dx = 0; dx < size; dx++) {
+                    const pIdx = ((sy + dy) * W + (sx + dx)) * 4;
+                    pixels[pIdx]     = pt.color[0];
+                    pixels[pIdx + 1] = pt.color[1];
+                    pixels[pIdx + 2] = pt.color[2];
+                }
+            }
+        }
+    }
+
+    ctx.putImageData(frameBuffer, 0, 0);
+}
+
+// ==========================================
+// 9. ОТРИСОВКА ОРУЖИЯ (1..5), HUD И АВТОКАРТЫ
+// ==========================================
+function renderHUD() {
+    const bobX = Math.cos(bobPhase * 0.5) * 7 - player.swayX * 0.65;
+    const bobY = Math.abs(Math.sin(bobPhase)) * 6 + player.recoil * 18 - Math.min(0, player.swayY * 0.5);
+    const wx = W * 0.5 + bobX;
+    const wy = VIEW_H + bobY;
+
+    if (muzzleLight > 0.25 && player.weapon > 0) {
+        const grad = ctx.createRadialGradient(wx, wy - 48, 3, wx, wy - 48, 48);
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(0.35, player.weapon === 4 ? '#55ffff' : '#ffaa22');
+        grad.addColorStop(1, 'rgba(200,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(wx, wy - 48, 48, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    if (player.weapon === 0) {
+        const swing = player.recoil * 55;
+        ctx.save();
+        ctx.translate(wx + 42 - swing, wy - 8 + swing * 0.35);
+        ctx.rotate(-0.32 - player.recoil * 0.85);
+        ctx.fillStyle = '#48281a';
+        ctx.fillRect(-8, -75, 16, 85);
+        ctx.fillStyle = '#683825';
+        ctx.fillRect(-4, -75, 5, 85);
+        ctx.fillStyle = '#850808';
+        ctx.fillRect(-8, -75, 16, 26);
+        ctx.fillStyle = '#aaa';
+        ctx.fillRect(-16, -64, 8, 3);
+        ctx.fillRect(8, -54, 9, 3);
+        ctx.restore();
+    } else if (player.weapon === 1) {
+        ctx.fillStyle = '#242428';
+        ctx.fillRect(wx - 9, wy - 48, 18, 50);
+        ctx.fillStyle = '#3a3a40';
+        ctx.fillRect(wx - 6, wy - 48, 5, 44);
+        ctx.fillStyle = '#111';
+        ctx.fillRect(wx - 4, wy - 55, 8, 10);
+    } else if (player.weapon === 2) {
+        ctx.fillStyle = '#3e2111';
+        ctx.fillRect(wx - 18, wy - 26, 36, 30);
+        ctx.fillStyle = '#252629';
+        ctx.fillRect(wx - 15, wy - 58, 14, 38);
+        ctx.fillRect(wx + 1, wy - 58, 14, 38);
+        ctx.fillStyle = '#45484f';
+        ctx.fillRect(wx - 12, wy - 56, 4, 34);
+        ctx.fillRect(wx + 4, wy - 56, 4, 34);
+    } else if (player.weapon === 3) {
+        ctx.fillStyle = '#222';
+        ctx.fillRect(wx - 22, wy - 42, 44, 44);
+        ctx.fillStyle = '#750c0c';
+        ctx.fillRect(wx - 16, wy - 58, 10, 20);
+        ctx.fillRect(wx + 6, wy - 58, 10, 20);
+        ctx.fillStyle = '#555';
+        ctx.fillRect(wx - 4, wy - 64, 8, 26);
+    } else if (player.weapon === 4) {
+        // Испепелитель Бездны (5-е оружие)
+        ctx.fillStyle = '#1a2830';
+        ctx.fillRect(wx - 24, wy - 46, 48, 48);
+        ctx.fillStyle = '#00d8ff';
+        ctx.fillRect(wx - 14, wy - 54, 28, 10);
+        ctx.fillStyle = '#334855';
+        ctx.fillRect(wx - 10, wy - 64, 20, 14);
+    }
+
+    // Прицел
+    ctx.fillStyle = 'rgba(220, 30, 30, 0.8)';
+    ctx.fillRect(W * 0.5 - 3, VIEW_H * 0.5, 2, 1);
+    ctx.fillRect(W * 0.5 + 2, VIEW_H * 0.5, 2, 1);
+    ctx.fillRect(W * 0.5, VIEW_H * 0.5 - 3, 1, 2);
+    ctx.fillRect(W * 0.5, VIEW_H * 0.5 + 2, 1, 2);
+
+    if (flashAlpha > 0) {
+        ctx.fillStyle = flashColor;
+        ctx.globalAlpha = flashAlpha;
+        ctx.fillRect(0, 0, W, VIEW_H);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Нижняя панель статуса
+    ctx.fillStyle = '#141010';
+    ctx.fillRect(0, VIEW_H, W, HUD_H);
+    ctx.strokeStyle = '#551010';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, VIEW_H + 1, W - 2, HUD_H - 2);
+
+    ctx.beginPath();
+    ctx.moveTo(90, VIEW_H); ctx.lineTo(90, H);
+    ctx.moveTo(180, VIEW_H); ctx.lineTo(180, H);
+    ctx.moveTo(238, VIEW_H); ctx.lineTo(238, H);
+    ctx.moveTo(340, VIEW_H); ctx.lineTo(340, H);
+    ctx.stroke();
+
+    ctx.font = 'bold 15px Courier New';
+    ctx.fillStyle = player.hp > 35 ? '#d22' : '#f00';
+    ctx.fillText(`${player.hp}%`, 16, VIEW_H + 22);
+
+    ctx.fillStyle = '#d92';
+    ctx.fillText(player.weapon === 0 ? '∞' : `${player.ammo}`, 112, VIEW_H + 22);
+
+    ctx.fillStyle = player.flashlightOn ? '#6cf' : '#567';
+    ctx.fillText(`${player.battery | 0}%`, 255, VIEW_H + 22);
+
+    ctx.font = '9px Courier New';
+    ctx.fillStyle = '#888';
+    ctx.fillText('ЗДОРОВЬЕ', 14, VIEW_H + 35);
+    ctx.fillText('ПАТРОНЫ', 105, VIEW_H + 35);
+    ctx.fillText('ФОНАРИК [F/R]', 246, VIEW_H + 35);
+
+    ctx.fillStyle = '#e44';
+    ctx.fillText(`УР.0${currentLevelIdx + 1} | ${WEAPON_DATA[player.weapon].name.slice(0, 12)}`, 347, VIEW_H + 18);
+    ctx.fillStyle = '#888';
+    ctx.fillText(`ЖЕРТВЫ:${killsCount}/${totalEnemies} ТАЙН:${secretsFound}/${totalSecrets}`, 347, VIEW_H + 33);
+
+    drawDoomFace(190, VIEW_H + 5);
+
+    if (messageTimer > 0) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.74)';
+        ctx.fillRect(0, 0, W, 20);
+        ctx.font = 'bold 10px Courier New';
+        ctx.fillStyle = '#e33';
+        ctx.fillText(currentMessage, 10, 14);
+    }
+
+    if (showAutomap) {
+        drawAutomap();
+    }
+}
+
+function drawDoomFace(x, y) {
+    ctx.fillStyle = '#080404';
+    ctx.fillRect(x, y, 38, 32);
+    ctx.fillStyle = player.hp > 40 ? '#8c7466' : '#664444';
+    ctx.fillRect(x + 9, y + 4, 20, 24);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x + 12, y + 10, 5, 5);
+    ctx.fillRect(x + 21, y + 10, 5, 5);
+    if (player.sanity < 45 || player.hp < 35) {
+        ctx.fillStyle = '#f00';
+        ctx.fillRect(x + 14, y + 12, 2, 2);
+        ctx.fillRect(x + 23, y + 12, 2, 2);
+    }
+    if (player.hp < 75) {
+        ctx.fillStyle = '#900';
+        ctx.fillRect(x + 13, y + 15, 3, 10);
+        ctx.fillRect(x + 22, y + 4, 4, 9);
+    }
+    ctx.fillStyle = '#200';
+    ctx.fillRect(x + 14, y + 21, 10, player.hp < 35 ? 5 : 2);
+}
+
+function drawAutomap() {
+    const cell = 7;
+    const ox = 12, oy = 26;
+    ctx.fillStyle = 'rgba(5, 0, 0, 0.86)';
+    ctx.fillRect(ox - 4, oy - 4, map[0].length * cell + 8, map.length * cell + 8);
+
+    for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < map[0].length; x++) {
+            const v = map[y][x];
+            if (v > 0) {
+                ctx.fillStyle = v === 4 ? '#cc0' : (v === 5 ? '#f00' : (v === 8 ? '#0f0' : '#5a2222'));
+                ctx.fillRect(ox + x * cell, oy + y * cell, cell - 1, cell - 1);
+            }
+        }
+    }
+    const px = ox + player.x * cell;
+    const py = oy + player.y * cell;
+    ctx.strokeStyle = '#6cf';
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + player.dirX * 10, py + player.dirY * 10);
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(px - 2, oy + player.y * cell - 2, 4, 4);
+}
+
+// ==========================================
+// 10. ПЕРЕХОДЫ МЕЖДУ УРОВНЯМИ, ПОБЕДА И СМЕРТЬ
+// ==========================================
+const overlay = document.getElementById('overlay');
+const levelBadge = document.getElementById('level-badge');
+const titleText = document.getElementById('title-text');
+const descText = document.getElementById('desc-text');
+const startBtn = document.getElementById('start-btn');
+
+function completeCurrentLevel() {
+    mouseDown = false;
+    document.exitPointerLock();
+    overlay.style.display = 'flex';
+
+    if (currentLevelIdx < LEVELS.length - 1) {
+        gameState = 'INTERMISSION';
+        const nextLvl = LEVELS[currentLevelIdx + 1];
+        levelBadge.textContent = `ЭТАП 0${currentLevelIdx + 1} ПРОЙДЕН // ВПЕРЕДИ УРОВЕНЬ 0${currentLevelIdx + 2}`;
+        titleText.textContent = "СПУСК ГЛУБЖЕ";
+        descText.innerHTML = `
+            <b>ИТОГИ ${LEVELS[currentLevelIdx].title}:</b><br>
+            Истреблено тварей: <b>${killsCount} из ${totalEnemies}</b> &nbsp;|&nbsp;
+            Тайников открыто: <b>${secretsFound} из ${totalSecrets}</b> &nbsp;|&nbsp;
+            Время: <b>${levelTime | 0} сек.</b><br><br>
+            <span style="color:#d44">${nextLvl.subtitle}</span>
+        `;
+        startBtn.textContent = `ВОЙТИ НА ${nextLvl.title}`;
+    } else {
+        gameState = 'WIN';
+        levelBadge.textContent = "КАМПАНИЯ ЗАВЕРШЕНА // ВСЕ 4 КРУГА ПРОЙДЕНЫ";
+        titleText.textContent = "ИСКУПЛЕНИЕ ВО ТЬМЕ";
+        descText.innerHTML = `
+            Ты сокрушил Архонта Безысходности и дошел до самого дна Сердцевины Вины.<br>
+            Гул в твоей голове наконец-то стих.<br><br>
+            Финальный уровень зачищен: <b>${killsCount} / ${totalEnemies}</b> тварей |
+            Тайники: <b>${secretsFound} / ${totalSecrets}</b> |
+            Здоровье: <b>${player.hp}%</b>
+        `;
+        startBtn.textContent = "НАЧАТЬ КАМПАНИЮ ЗАНОВО";
+    }
+}
+
+function dieGame() {
+    gameState = 'DEAD';
+    mouseDown = false;
+    document.exitPointerLock();
+    overlay.style.display = 'flex';
+    levelBadge.textContent = `${LEVELS[currentLevelIdx].title} // ГИБЕЛЬ`;
+    titleText.textContent = "СОЗНАНИЕ ПОГАСЛО";
+    descText.innerHTML = `
+        Твоя плоть осталась в темноте уровня 0${currentLevelIdx + 1}.<br>
+        Но кошмар не отпустит тебя, пока ты не дойдешь до конца.<br><br>
+        Уничтожено тварей на уровне: <b>${killsCount} из ${totalEnemies}</b>
+    `;
+    startBtn.textContent = `ПОВТОРИТЬ УРОВЕНЬ 0${currentLevelIdx + 1}`;
+}
+
+startBtn.addEventListener('click', () => {
+    sfx.init();
+    if (gameState === 'MENU' || gameState === 'WIN') {
+        loadLevel(0, false);
+    } else if (gameState === 'INTERMISSION') {
+        loadLevel(currentLevelIdx + 1, false);
+    } else if (gameState === 'DEAD') {
+        loadLevel(currentLevelIdx, true);
+    }
+    gameState = 'PLAY';
+    overlay.style.display = 'none';
+    canvas.requestPointerLock();
+});
+
+generateAssets();
+
+let lastTime = performance.now();
+function gameLoop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    if (gameState === 'PLAY') {
+        update(dt);
+        renderWorld(now);
+        renderHUD();
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
