@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>СЕАНС ГЕНЕРАЦИИ</title>
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        user-select: none;
+    }
+    body {
+        overflow: hidden;
+        background-color: #020204;
+        font-family: 'Courier New', Courier, monospace;
+        color: #d0d0d0;
+    }
+    #canvas-container {
+        width: 100vw;
+        height: 100vh;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+    #start-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: radial-gradient(circle, #0d1117 0%, #020204 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+        cursor: pointer;
+        transition: opacity 1.5s ease;
+    }
+    #start-overlay h1 {
+        font-size: 2.2rem;
+        letter-spacing: 6px;
+        color: #ff4a4a;
+        text-shadow: 0 0 15px rgba(255, 74, 74, 0.5);
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    #start-overlay p {
+        font-size: 1rem;
+        color: #778899;
+        max-width: 500px;
+        text-align: center;
+        line-height: 1.6;
+        margin-bottom: 40px;
+    }
+    .blink {
+        animation: blinker 2s linear infinite;
+        color: #ffffff;
+        font-size: 1.1rem;
+        border: 1px solid #445566;
+        padding: 12px 28px;
+        background: rgba(255,255,255,0.03);
+    }
+    @keyframes blinker {
+        50% { opacity: 0.2; }
+    }
+    #ui-hint {
+        position: absolute;
+        bottom: 18px;
+        width: 100%;
+        text-align: center;
+        font-size: 0.85rem;
+        color: rgba(180, 190, 200, 0.45);
+        pointer-events: none;
+        z-index: 10;
+        letter-spacing: 1px;
+        transition: opacity 1s;
+    }
+    #ending-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 50;
+        opacity: 0;
+        transition: opacity 4s ease;
+        background: radial-gradient(circle, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.85) 100%);
+    }
+    #ending-text {
+        max-width: 680px;
+        text-align: center;
+        font-size: 1.25rem;
+        line-height: 2;
+        color: #e6c3c3;
+        text-shadow: 0 0 12px rgba(255, 50, 50, 0.6);
+        padding: 20px;
+        white-space: pre-line;
+    }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="start-overlay">
+    <h1>СЕАНС ГЕНЕРАЦИИ</h1>
+    <p>Ты сидишь перед монитором в пустой комнате. У тебя нет сил писать код вручную. Ты просто хочешь нажать одну кнопку, чтобы искусственный интеллект создал программу, которая наведёт порядок в твоей жизни.</p>
+    <div class="blink">[ НАЖМИТЕ, ЧТОБЫ НАЧАТЬ ]</div>
+</div>
+
+<div id="canvas-container"></div>
+<div id="ui-hint">Управление: Нажимайте на 3D-кнопки на столе мышью или используйте клавиши [A] [D] и [ПРОБЕЛ]</div>
+
+<div id="ending-overlay">
+    <div id="ending-text"></div>
+</div>
+
+<script>
+// ==========================================
+// AUDIO ENGINE (Web Audio API Synthesizer)
+// ==========================================
+class SoundEngine {
+    constructor() {
+        this.ctx = null;
+        this.droneOsc1 = null;
+        this.droneOsc2 = null;
+        this.droneGain = null;
+        this.noiseGain = null;
+        this.filter = null;
+        this.initialized = false;
+    }
+
+    init() {
+        if (this.initialized) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContext();
+        this.initialized = true;
+
+        // Abyssal Drone
+        this.droneOsc1 = this.ctx.createOscillator();
+        this.droneOsc2 = this.ctx.createOscillator();
+        this.droneGain = this.ctx.createGain();
+        this.filter = this.ctx.createBiquadFilter();
+
+        this.droneOsc1.type = 'sawtooth';
+        this.droneOsc2.type = 'triangle';
+        this.droneOsc1.frequency.value = 55; // A1
+        this.droneOsc2.frequency.value = 55.4;
+
+        this.filter.type = 'lowpass';
+        this.filter.frequency.value = 110;
+
+        this.droneGain.gain.value = 0.08;
+
+        this.droneOsc1.connect(this.filter);
+        this.droneOsc2.connect(this.filter);
+        this.filter.connect(this.droneGain);
+        this.droneGain.connect(this.ctx.destination);
+
+        this.droneOsc1.start();
+        this.droneOsc2.start();
+
+        // Boiling / Rumble Noise
+        const bufferSize = this.ctx.sampleRate * 3;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        let lastOut = 0.0;
+        for (let i = 0; i < bufferSize; i++) {
+            const white = Math.random() * 2 - 1;
+            data[i] = (lastOut + (0.02 * white)) / 1.02;
+            lastOut = data[i];
+            data[i] *= 3.5; // Brown noise gain
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+        noise.loop = true;
+
+        const noiseFilter = this.ctx.createBiquadFilter();
+        noiseFilter.type = 'bandpass';
+        noiseFilter.frequency.value = 160;
+        noiseFilter.Q.value = 1.5;
+
+        this.noiseGain = this.ctx.createGain();
+        this.noiseGain.gain.value = 0.01;
+
+        noise.connect(noiseFilter);
+        noiseFilter.connect(this.noiseGain);
+        this.noiseGain.connect(this.ctx.destination);
+        noise.start();
+    }
+
+    setDepthAmbience(depth) {
+        if (!this.initialized) return;
+        const now = this.ctx.currentTime;
+        if (depth === 1) {
+            this.droneOsc1.frequency.setTargetAtTime(48, now, 2);
+            this.droneOsc2.frequency.setTargetAtTime(48.5, now, 2);
+            this.noiseGain.gain.setTargetAtTime(0.03, now, 2);
+        } else if (depth === 2) {
+            this.droneOsc1.frequency.setTargetAtTime(41, now, 2);
+            this.droneOsc2.frequency.setTargetAtTime(61.5, now, 2); // Fifth dissonance
+            this.filter.frequency.setTargetAtTime(160, now, 2);
+            this.noiseGain.gain.setTargetAtTime(0.08, now, 2);
+        } else if (depth === 3) {
+            this.droneOsc1.frequency.setTargetAtTime(36, now, 2);
+            this.droneOsc2.frequency.setTargetAtTime(38.2, now, 2); // Heavy beating
+            this.filter.frequency.setTargetAtTime(240, now, 2);
+            this.noiseGain.gain.setTargetAtTime(0.18, now, 2);
+        } else if (depth >= 4) {
+            this.droneOsc1.frequency.setTargetAtTime(32.7, now, 3);
+            this.droneOsc2.frequency.setTargetAtTime(32.9, now, 3);
+            this.filter.frequency.setTargetAtTime(90, now, 3);
+            this.noiseGain.gain.setTargetAtTime(0.05, now, 4);
+        }
+    }
+
+    playButtonClick(isAction = false) {
+        if (!this.initialized) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(isAction ? 140 : 220, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.07);
+
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.08);
+    }
+
+    playTypeBeep(depth = 0) {
+        if (!this.initialized) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = depth >= 2 ? 'sawtooth' : 'sine';
+        const baseFreq = depth === 0 ? 520 : (depth === 1 ? 340 : (depth === 2 ? 250 : 170));
+        osc.frequency.setValueAtTime(baseFreq + (Math.random() * 30 - 15), now);
+
+        gain.gain.setValueAtTime(0.03, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.04);
+    }
+
+    playZoomTransition() {
+        if (!this.initialized) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(42, now + 1.8);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, now);
+        filter.frequency.exponentialRampToValueAtTime(80, now + 1.8);
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.18, now + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 1.85);
+    }
+
+    playSadChord(step) {
+        if (!this.initialized) return;
+        const chords = [
+            [220.0, 261.63, 329.63], // Am
+            [174.61, 220.0, 261.63], // F
+            [146.83, 174.61, 220.0], // Dm
+            [164.81, 196.00, 246.94] // Em
+        ];
+        const notes = chords[step % chords.length];
+        const now = this.ctx.currentTime;
+
+        notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+
+            gain.gain.setValueAtTime(0.001, now + idx * 0.12);
+            gain.gain.linearRampToValueAtTime(0.07, now + idx * 0.12 + 0.2);
+            gain.gain.exponentialRampToValueAtTime(0.0005, now + idx * 0.12 + 4.0);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.12);
+            osc.stop(now + idx * 0.12 + 4.1);
+        });
+    }
+}
+
+const sound = new SoundEngine();
+
+// ==========================================
+// 2D INNER GAME ENGINE (Rendered on Monitor)
+// ==========================================
+class InnerGame {
+    constructor(onStateChange) {
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = 640;
+        this.canvas.height = 480;
+        this.ctx = this.canvas.getContext('2d');
+        this.onStateChange = onStateChange;
+
+        // States: 0 = IDE, 1 = Depth 1, 2 = Depth 2, 3 = Depth 3, 4 = Singularity, 5 = Ending
+        this.state = 0;
+        this.idePhase = 0;
+
+        this.lobster = {
+            x: 90,
+            dir: 1,
+            walkFrame: 0,
+            isMoving: false
+        };
+
+        this.input = { left: false, right: false };
+
+        this.dialogue = {
+            active: false,
+            text: "",
+            displayed: "",
+            charIndex: 0,
+            timer: 0,
+            onComplete: null
+        };
+
+        this.zoom = {
+            active: false,
+            progress: 0,
+            targetState: 1
+        };
+
+        this.singularityStep = 0;
+        this.bubbles = [];
+        for (let i = 0; i < 35; i++) {
+            this.bubbles.push({
+                x: Math.random() * 640,
+                y: Math.random() * 480,
+                r: 1 + Math.random() * 4,
+                speed: 0.4 + Math.random() * 1.5
+            });
+        }
+
+        this.levels = {
+            1: {
+                title: "ГЛУБИНА 1: ТИХАЯ ГАВАНЬ",
+                bgTop: "#06141f",
+                bgBot: "#03090f",
+                floor: "#0d2230",
+                accent: "#4ca6ff",
+                objects: [
+                    {
+                        x: 220,
+                        name: "Иллюминатор",
+                        type: "window",
+                        inspected: false,
+                        text: "За мутным стеклом — тёмный океан. Другие омары давно уплыли к живым рифам. Они строили, ошибались и жили. А ты закрылся в ракушке и ждёшь, когда алгоритм сам принесёт тебя к счастью."
+                    },
+                    {
+                        x: 370,
+                        name: "Забытая гитара",
+                        type: "guitar",
+                        inspected: false,
+                        text: "Когда-то ты хотел создавать что-то своё. Но зачем сбивать пальцы в кровь, если нейросеть пишет симфонии за секунду? Твои клешни отвыкли чувствовать настоящую боль и настоящую радость."
+                    },
+                    {
+                        x: 525,
+                        name: "Терминал",
+                        type: "terminal",
+                        inspected: false,
+                        lockedText: "Омар смотрит на мигающий экран, но не может сосредоточиться. Сначала нужно оглядеться вокруг [Осмотрите объекты позади].",
+                        text: "Омару страшно выходить в холодный океан. Он жмёт кнопку генерации: «ИИ, создай мне мир, где мне не нужно ничего решать». На мониторе омара запускается игра... про омара."
+                    }
+                ]
+            },
+            2: {
+                title: "ГЛУБИНА 2: ТЁПЛАЯ ВОДА",
+                bgTop: "#240d08",
+                bgBot: "#120503",
+                floor: "#2e1109",
+                accent: "#ff7733",
+                objects: [
+                    {
+                        x: 220,
+                        name: "Старый телефон",
+                        type: "phone",
+                        inspected: false,
+                        text: "48 пропущенных вызовов от «Мама». Полгода назад ты поленился позвонить и попросил ИИ сгенерировать ей тёплое голосовое сообщение. Ты даже не прослушал его. Вчера её не стало."
+                    },
+                    {
+                        x: 370,
+                        name: "Термометр",
+                        type: "thermometer",
+                        inspected: false,
+                        text: "Ртутный столбик ползёт вверх. Вода вокруг становится горячей и пахнет сталью. Омар убеждает себя, что это просто уютное тепло комнаты. Он боится поднять глаза и увидеть крышку кастрюли."
+                    },
+                    {
+                        x: 525,
+                        name: "Второй терминал",
+                        type: "terminal",
+                        inspected: false,
+                        lockedText: "В комнате слишком душно. Омар не помнит, почему он здесь [Осмотрите комнату, чтобы вспомнить].",
+                        text: "Панцирь обжигает кипятком. Омар в панике бьёт клешнёй по клавише: «Мне больно! Сгенерируй мне спасение! Напиши программу, которая вернёт мне время!». Экран внутри экрана проваливается вглубь..."
+                    }
+                ]
+            },
+            3: {
+                title: "ГЛУБИНА 3: ТОЧКА КИПЕНИЯ",
+                bgTop: "#1f0004",
+                bgBot: "#080001",
+                floor: "#290005",
+                accent: "#ff1e38",
+                objects: [
+                    {
+                        x: 220,
+                        name: "Мёртвый календарь",
+                        type: "calendar",
+                        inspected: false,
+                        text: "Страницы сгорели. Ты сэкономил тысячи часов, переложив свою волю на машину. Но сэкономленное время не стало жизнью — оно стало пустотой, в которой ты сидишь прямо сейчас."
+                    },
+                    {
+                        x: 370,
+                        name: "Треснувшее зеркало",
+                        type: "mirror",
+                        inspected: false,
+                        text: "Омар смотрит в чёрный осколок. Там нет омара. Оттуда, из тёмной комнаты, на него смотришь ты. Твоё лицо подсвечено монитором. Твои руки лежат на тех же самых кнопках."
+                    },
+                    {
+                        x: 525,
+                        name: "Алтарь Кода",
+                        type: "terminal",
+                        inspected: false,
+                        lockedText: "Клешни онемели. Оглянись в последний раз, прежде чем нажать кнопку.",
+                        text: "Вода бурлит. Границы между тобой и экраном больше нет. Осталась только одна бесконечная кнопка, заменяющая дыхание."
+                    }
+                ]
+            }
+        };
+    }
+
+    startDialogue(text, onComplete = null) {
+        this.dialogue.active = true;
+        this.dialogue.text = text;
+        this.dialogue.displayed = "";
+        this.dialogue.charIndex = 0;
+        this.dialogue.timer = 0;
+        this.dialogue.onComplete = onComplete;
+    }
+
+    triggerAction() {
+        if (this.zoom.active || this.state === 5) return;
+
+        // If dialogue is typing, finish it immediately; if finished, close it
+        if (this.dialogue.active) {
+            if (this.dialogue.charIndex < this.dialogue.text.length) {
+                this.dialogue.displayed = this.dialogue.text;
+                this.dialogue.charIndex = this.dialogue.text.length;
+            } else {
+                this.dialogue.active = false;
+                const cb = this.dialogue.onComplete;
+                this.dialogue.onComplete = null;
+                if (cb) cb();
+            }
+            return;
+        }
+
+        // State 0: IDE
+        if (this.state === 0) {
+            if (this.idePhase === 0) {
+                this.idePhase = 1;
+                this.startDialogue(
+                    "ИИ-АССИСТЕНТ: Анализ запроса... Вы просите создать приложение для управления временем и жизнью, потому что «нет сил делать самому». Ошибка компиляции воли. Вместо приложения запущена рекурсивная симуляция: LOBSTER_ABYSS.exe",
+                    () => {
+                        this.triggerZoomTo(1);
+                    }
+                );
+            }
+            return;
+        }
+
+        // State 1..3: Lobster Levels
+        if (this.state >= 1 && this.state <= 3) {
+            const lvl = this.levels[this.state];
+            let targetObj = null;
+            for (const obj of lvl.objects) {
+                if (Math.abs(this.lobster.x - obj.x) < 48) {
+                    targetObj = obj;
+                    break;
+                }
+            }
+
+            if (targetObj) {
+                if (targetObj.type === "terminal") {
+                    const othersInspected = lvl.objects
+                        .filter(o => o.type !== "terminal")
+                        .every(o => o.inspected);
+
+                    if (!othersInspected) {
+                        this.startDialogue(targetObj.lockedText);
+                    } else {
+                        targetObj.inspected = true;
+                        this.startDialogue(targetObj.text, () => {
+                            this.triggerZoomTo(this.state + 1);
+                        });
+                    }
+                } else {
+                    targetObj.inspected = true;
+                    this.startDialogue(targetObj.text);
+                }
+            }
+            return;
+        }
+
+        // State 4: Singularity
+        if (this.state === 4) {
+            const messages = [
+                "ГОД 2027: Ты перегенерировал свой проект в сотый раз. Он стал идеальным, но тебе больше нечего в него записывать. За окном сменилась весна, которую ты не видел.",
+                "ГОД 2033: Друзья перестали звать тебя. Твой автоответчик общается с их автоответчиками. Они желают друг другу счастливого пути.",
+                "ГОД 2042: В комнате тихо, только гудят кулеры и закипает вода на дне океана. Ты забыл, как звучит твой собственный голос без обработки.",
+                "ГОД 2058: Панцирь окончательно затвердел. Жизнь успешно автоматизирована и пропущена от начала до конца."
+            ];
+
+            if (this.singularityStep < messages.length) {
+                const msg = messages[this.singularityStep];
+                this.singularityStep++;
+                sound.playSadChord(this.singularityStep);
+                this.onStateChange(this.state, this.singularityStep);
+
+                this.startDialogue(msg, () => {
+                    if (this.singularityStep >= messages.length) {
+                        this.state = 5;
+                        this.onStateChange(5, 0);
+                    }
+                });
+            }
+        }
+    }
+
+    triggerZoomTo(nextState) {
+        this.zoom.active = true;
+        this.zoom.progress = 0;
+        this.zoom.targetState = nextState;
+        sound.playZoomTransition();
+    }
+
+    update(dt) {
+        // Bubbles
+        for (const b of this.bubbles) {
+            b.y -= b.speed * (1 + this.state * 0.7);
+            if (b.y < -10) {
+                b.y = 490;
+                b.x = Math.random() * 640;
+            }
+        }
+
+        // Zoom transition
+        if (this.zoom.active) {
+            this.zoom.progress += dt * 0.65;
+            if (this.zoom.progress >= 1) {
+                this.zoom.active = false;
+                this.state = this.zoom.targetState;
+                this.lobster.x = 85;
+                this.lobster.dir = 1;
+                sound.setDepthAmbience(this.state);
+                this.onStateChange(this.state, 0);
+
+                if (this.state === 1) {
+                    this.startDialogue("Ты — Омар на дне ледяного океана. Тебе нужно строить укрытие, но у тебя лапки-клешни. Проще дойти до терминала справа и попросить нейросеть всё исправить.");
+                } else if (this.state === 2) {
+                    this.startDialogue("Рекурсия углубляется. Этот омар меньше, пиксели грубее, а вода вокруг становится невыносимо горячей.");
+                } else if (this.state === 3) {
+                    this.startDialogue("Третий уровень вложенности. Здесь почти не осталось мира — только кипяток, красные помехи и страх перед настоящей жизнью.");
+                } else if (this.state === 4) {
+                    this.startDialogue("Внутри последнего монитора — твоя собственная комната. Кнопки движения исчезли. Осталась только одна кнопка.");
+                }
+            }
+            return;
+        }
+
+        // Typewriter update
+        if (this.dialogue.active && this.dialogue.charIndex < this.dialogue.text.length) {
+            this.dialogue.timer += dt;
+            if (this.dialogue.timer >= 0.024) {
+                this.dialogue.timer = 0;
+                this.dialogue.charIndex++;
+                this.dialogue.displayed = this.dialogue.text.slice(0, this.dialogue.charIndex);
+                if (this.dialogue.charIndex % 2 === 0) {
+                    sound.playTypeBeep(this.state);
+                }
+            }
+        }
+
+        // Lobster movement in levels 1..3
+        if (this.state >= 1 && this.state <= 3 && !this.dialogue.active) {
+            const speed = (this.state === 3 ? 95 : 135) * dt;
+            this.lobster.isMoving = false;
+            if (this.input.left) {
+                this.lobster.x = Math.max(55, this.lobster.x - speed);
+                this.lobster.dir = -1;
+                this.lobster.isMoving = true;
+            }
+            if (this.input.right) {
+                this.lobster.x = Math.min(545, this.lobster.x + speed);
+                this.lobster.dir = 1;
+                this.lobster.isMoving = true;
+            }
+            if (this.lobster.isMoving) {
+                this.lobster.walkFrame += dt * 10;
+            }
+        }
+    }
+
+    render() {
+        const ctx = this.ctx;
+        ctx.save();
+
+        // Zoom camera transform centered on the terminal screen at (532, 268)
+        if (this.zoom.active) {
+            const ease = this.zoom.progress * this.zoom.progress * (3 - 2 * this.zoom.progress);
+            const scale = 1 + ease * 11;
+            const targetX = this.state === 0 ? 320 : 532;
+            const targetY = this.state === 0 ? 240 : 258;
+            ctx.translate(targetX, targetY);
+            ctx.scale(scale, scale);
+            ctx.translate(-targetX, -targetY);
+        }
+
+        if (this.state === 0) {
+            this.renderIDE(ctx);
+        } else if (this.state >= 1 && this.state <= 3) {
+            this.renderLobsterLevel(ctx, this.state);
+        } else if (this.state === 4) {
+            this.renderSingularity(ctx);
+        } else if (this.state === 5) {
+            this.renderEndingScreen(ctx);
+        }
+
+        ctx.restore();
+
+        // Dialogue Overlay (always drawn unscaled unless zooming)
+        if (this.dialogue.active && !this.zoom.active) {
+            this.renderDialogueBox(ctx);
+        }
+
+        // CRT Scanlines & Vignette
+        this.renderCRTEffects(ctx);
+    }
+
+    renderIDE(ctx) {
+        ctx.fillStyle = "#0b0e14";
+        ctx.fillRect(0, 0, 640, 480);
+
+        // Top Bar
+        ctx.fillStyle = "#161b24";
+        ctx.fillRect(0, 0, 640, 32);
+        ctx.fillStyle = "#5c6bc0";
+        ctx.font = "bold 14px Courier New";
+        ctx.fillText("VibeStudio AI — Автоматический Генератор Смысла v9.4", 16, 21);
+
+        // Line numbers
+        ctx.fillStyle = "#11151c";
+        ctx.fillRect(0, 32, 42, 448);
+        ctx.fillStyle = "#3b4454";
+        ctx.font = "13px Courier New";
+        for (let i = 1; i <= 18; i++) {
+            ctx.fillText(String(i).padStart(2, '0'), 10, 40 + i * 22);
+        }
+
+        // Code / Prompt Text
+        ctx.fillStyle = "#7fdbca";
+        ctx.fillText("// ЗАПРОС К НЕЙРОСЕТИ:", 58, 62);
+
+        ctx.fillStyle = "#d6deeb";
+        const promptLines = [
+            "«Пожалуйста, сгенерируй мне идеальный планер для жизни.",
+            "Я постоянно всё откладываю. Я устал думать и бояться.",
+            "Сделай программу, где мне нужно просто нажимать одну кнопку,",
+            "чтобы дела делались сами. У меня больше нет сил писать",
+            "свою жизнь вручную...»"
+        ];
+        promptLines.forEach((line, idx) => {
+            ctx.fillText(line, 58, 92 + idx * 24);
+        });
+
+        // Glowing Generate Button on Screen
+        const pulse = 0.7 + 0.3 * Math.sin(performance.now() * 0.005);
+        ctx.fillStyle = `rgba(92, 107, 192, ${0.25 * pulse})`;
+        ctx.fillRect(140, 250, 360, 64);
+        ctx.strokeStyle = "#82aaff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(140, 250, 360, 64);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 17px Courier New";
+        ctx.textAlign = "center";
+        ctx.fillText("[ СГЕНЕРИРОВАТЬ ЖИЗНЬ (ПРОБЕЛ) ]", 320, 288);
+        ctx.textAlign = "left";
+    }
+
+    renderLobsterLevel(ctx, depth) {
+        const lvl = this.levels[depth];
+
+        // Screen shake on depth 3
+        if (depth === 3) {
+            ctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+        }
+
+        // Background Gradient
+        const grad = ctx.createLinearGradient(0, 0, 0, 480);
+        grad.addColorStop(0, lvl.bgTop);
+        grad.addColorStop(1, lvl.bgBot);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 640, 480);
+
+        // Bubbles
+        ctx.fillStyle = depth === 1 ? "rgba(120, 200, 255, 0.25)" : "rgba(255, 100, 80, 0.35)";
+        for (const b of this.bubbles) {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.r * (depth * 0.6), 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Floor
+        ctx.fillStyle = lvl.floor;
+        ctx.fillRect(0, 340, 640, 140);
+        ctx.strokeStyle = lvl.accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 340);
+        ctx.lineTo(640, 340);
+        ctx.stroke();
+
+        // Header Title
+        ctx.fillStyle = lvl.accent;
+        ctx.font = "bold 15px Courier New";
+        ctx.fillText(lvl.title, 20, 30);
+
+        // Draw Objects
+        for (const obj of lvl.objects) {
+            this.drawLevelObject(ctx, obj, depth, lvl.accent);
+
+            // Interaction hint when lobster is close
+            const dist = Math.abs(this.lobster.x - obj.x);
+            if (dist < 48 && !this.dialogue.active) {
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 13px Courier New";
+                ctx.textAlign = "center";
+                ctx.fillText(`[ ПРОБЕЛ: ${obj.name} ]`, obj.x, 165);
+                ctx.textAlign = "left";
+            }
+        }
+
+        // Draw Lobster
+        this.drawLobster(ctx, this.lobster.x, 315, this.lobster.dir, this.lobster.walkFrame, depth);
+    }
+
+    drawLevelObject(ctx, obj, depth, accent) {
+        const x = obj.x;
+        ctx.save();
+
+        if (obj.type === "window") {
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 4;
+            ctx.fillStyle = "#02060a";
+            ctx.beginPath();
+            ctx.arc(x, 240, 38, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            // Crossbars
+            ctx.beginPath();
+            ctx.moveTo(x - 38, 240); ctx.lineTo(x + 38, 240);
+            ctx.moveTo(x, 202); ctx.lineTo(x, 278);
+            ctx.stroke();
+        } else if (obj.type === "guitar") {
+            ctx.fillStyle = "#6e4720";
+            ctx.beginPath();
+            ctx.arc(x - 6, 322, 16, 0, Math.PI * 2);
+            ctx.arc(x + 4, 306, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#a87948";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(x + 8, 298);
+            ctx.lineTo(x + 25, 265);
+            ctx.stroke();
+        } else if (obj.type === "phone") {
+            ctx.fillStyle = "#2b1d1d";
+            ctx.fillRect(x - 20, 295, 40, 45);
+            ctx.fillStyle = "#ff2222";
+            const blink = Math.sin(performance.now() * 0.01) > 0;
+            if (blink) {
+                ctx.beginPath();
+                ctx.arc(x + 10, 305, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillStyle = "#ff9999";
+            ctx.font = "11px Courier New";
+            ctx.fillText("48", x - 8, 325);
+        } else if (obj.type === "thermometer") {
+            ctx.fillStyle = "#1a0808";
+            ctx.strokeStyle = "#ff7733";
+            ctx.lineWidth = 2;
+            ctx.fillRect(x - 10, 200, 20, 95);
+            ctx.strokeRect(x - 10, 200, 20, 95);
+            ctx.fillStyle = "#ff2a00";
+            ctx.fillRect(x - 5, 215, 10, 75);
+            ctx.beginPath();
+            ctx.arc(x, 295, 14, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (obj.type === "calendar") {
+            ctx.fillStyle = "#3a0a10";
+            ctx.fillRect(x - 26, 215, 52, 62);
+            ctx.fillStyle = "#ff1e38";
+            ctx.fillRect(x - 26, 215, 52, 16);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 16px Courier New";
+            ctx.fillText("ПУСТО", x - 23, 255);
+        } else if (obj.type === "mirror") {
+            ctx.strokeStyle = "#882233";
+            ctx.lineWidth = 3;
+            ctx.fillStyle = "#050002";
+            ctx.fillRect(x - 25, 210, 50, 80);
+            ctx.strokeRect(x - 25, 210, 50, 80);
+            // Crack lines & ghostly silhouette
+            ctx.fillStyle = "rgba(255, 80, 80, 0.25)";
+            ctx.beginPath();
+            ctx.arc(x, 245, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillRect(x - 16, 260, 32, 26);
+        } else if (obj.type === "terminal") {
+            // Desk
+            ctx.fillStyle = "#1c222b";
+            ctx.fillRect(x - 36, 290, 72, 50);
+            // Monitor casing
+            ctx.fillStyle = "#323c4a";
+            ctx.fillRect(x - 28, 232, 56, 52);
+            // Inner Screen (Miniature recursive preview!)
+            ctx.fillStyle = depth === 1 ? "#240d08" : (depth === 2 ? "#1f0004" : "#000000");
+            ctx.fillRect(x - 22, 238, 44, 38);
+            // Tiny lobster inside the terminal screen
+            ctx.fillStyle = "#ff3333";
+            ctx.fillRect(x - 14, 262, 10, 6);
+            ctx.fillStyle = "#55ff99";
+            ctx.fillRect(x + 8, 255, 8, 12);
+        }
+
+        // Uninspected marker
+        if (!obj.inspected) {
+            const bounce = Math.sin(performance.now() * 0.006) * 4;
+            ctx.fillStyle = obj.type === "terminal" ? "#ffdd44" : accent;
+            ctx.font = "bold 18px Courier New";
+            ctx.textAlign = "center";
+            ctx.fillText(obj.type === "terminal" ? "!" : "?", x, 190 + bounce);
+            ctx.textAlign = "left";
+        }
+
+        ctx.restore();
+    }
+
+    drawLobster(ctx, x, y, dir, walkFrame, depth) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(dir, 1);
+
+        // Color becomes paler/boiled as depth increases
+        const bodyColor = depth === 1 ? "#d93829" : (depth === 2 ? "#ff4726" : "#ff1133");
+        const darkColor = depth === 1 ? "#8f1d14" : "#990a1c";
+
+        const legOffset = Math.sin(walkFrame) * 4;
+
+        // Legs
+        ctx.strokeStyle = darkColor;
+        ctx.lineWidth = 3;
+        for (let i = -1; i <= 1; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * 10, 10);
+            ctx.lineTo(i * 12 + (i % 2 === 0 ? legOffset : -legOffset), 24);
+            ctx.stroke();
+        }
+
+        // Tail segments
+        ctx.fillStyle = darkColor;
+        ctx.fillRect(-34, 4, 16, 12);
+        ctx.fillRect(-44, 8, 12, 10);
+
+        // Main Carapace
+        ctx.fillStyle = bodyColor;
+        ctx.fillRect(-20, -8, 38, 22);
+
+        // Claws
+        ctx.fillStyle = bodyColor;
+        const clawBob = Math.abs(Math.cos(walkFrame * 0.5)) * 2;
+        ctx.beginPath();
+        ctx.arc(26, -2 + clawBob, 11, 0.2, Math.PI * 1.8);
+        ctx.fill();
+
+        // Drooping Antennae (droop lower at higher depths)
+        ctx.strokeStyle = bodyColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(16, -6);
+        ctx.quadraticCurveTo(32, -22 + depth * 6, 46, -10 + depth * 9);
+        ctx.stroke();
+
+        // Eye
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(12, -13, 6, 6);
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(15, -12, 3, 4);
+
+        ctx.restore();
+    }
+
+    renderSingularity(ctx) {
+        ctx.fillStyle = "#080002";
+        ctx.fillRect(0, 0, 640, 480);
+
+        // Recursive wireframe tunnels
+        const time = performance.now() * 0.001;
+        ctx.strokeStyle = "rgba(255, 40, 60, 0.35)";
+        ctx.lineWidth = 1.5;
+        for (let i = 1; i <= 8; i++) {
+            const s = ((i * 40 + time * 30) % 320) / 320;
+            const w = s * 640;
+            const h = s * 480;
+            ctx.strokeRect(320 - w / 2, 240 - h / 2, w, h);
+        }
+
+        ctx.fillStyle = "#ff2a44";
+        ctx.font = "bold 18px Courier New";
+        ctx.textAlign = "center";
+        ctx.fillText("СИНГУЛЯРНОСТЬ ОТЛОЖЕННОЙ ЖИЗНИ", 320, 80);
+
+        // Central Skip Button
+        ctx.fillStyle = "rgba(255, 30, 50, 0.2)";
+        ctx.fillRect(150, 195, 340, 75);
+        ctx.strokeStyle = "#ff3355";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(150, 195, 340, 75);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 20px Courier New";
+        ctx.fillText("[ ПРОПУСТИТЬ ГОДЫ (ПРОБЕЛ) ]", 320, 238);
+
+        ctx.fillStyle = "#aa6670";
+        ctx.font = "14px Courier New";
+        ctx.fillText(`Итераций пропуска: ${this.singularityStep} / 4`, 320, 310);
+        ctx.textAlign = "left";
+    }
+
+    renderEndingScreen(ctx) {
+        ctx.fillStyle = "#030001";
+        ctx.fillRect(0, 0, 640, 480);
+
+        ctx.fillStyle = "#ff3344";
+        ctx.font = "bold 20px Courier New";
+        ctx.textAlign = "center";
+        ctx.fillText("ГЕНЕРАЦИЯ ЗАВЕРШЕНА", 320, 190);
+
+        ctx.fillStyle = "#b08088";
+        ctx.font = "15px Courier New";
+        ctx.fillText("Твоя программа работает идеально.", 320, 235);
+        ctx.fillText("Она сэкономила тебе всю жизнь.", 320, 265);
+        ctx.fillText("Считать больше нечего.", 320, 295);
+        ctx.textAlign = "left";
+    }
+
+    renderDialogueBox(ctx) {
+        ctx.fillStyle = "rgba(5, 7, 12, 0.92)";
+        ctx.fillRect(28, 348, 584, 114);
+        ctx.strokeStyle = this.state >= 2 ? "#ff4433" : "#6699cc";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(28, 348, 584, 114);
+
+        ctx.fillStyle = "#f0f4f8";
+        ctx.font = "15px Courier New";
+        this.wrapText(ctx, this.dialogue.displayed, 46, 376, 548, 21);
+
+        if (this.dialogue.charIndex >= this.dialogue.text.length) {
+            const blink = Math.sin(performance.now() * 0.008) > 0;
+            if (blink) {
+                ctx.fillStyle = "#ffcc44";
+                ctx.font = "bold 13px Courier New";
+                ctx.fillText("[ ПРОБЕЛ — ДАЛЕЕ ]", 445, 450);
+            }
+        }
+    }
+
+    renderCRTEffects(ctx) {
+        // Scanlines
+        ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+        for (let y = 0; y < 480; y += 4) {
+            ctx.fillRect(0, y, 640, 2);
+        }
+    }
+
+    wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+        const words = text.split(' ');
+        let line = '';
+        let curY = y;
+
+        for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + ' ';
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > maxWidth && n > 0) {
+                ctx.fillText(line, x, curY);
+                line = words[n] + ' ';
+                curY += lineHeight;
+            } else {
+                line = testLine;
+            }
+        }
+        ctx.fillText(line, x, curY);
+    }
+}
+
+// ==========================================
+// 3D OUTER WORLD (Three.js Desk & Abyss)
+// ==========================================
+class World3D {
+    constructor() {
+        this.container = document.getElementById('canvas-container');
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x030407, 0.065);
+
+        this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 120);
+        this.baseCamPos = new THREE.Vector3(0, 1.55, 3.35);
+        this.targetCamPos = this.baseCamPos.clone();
+        this.camera.position.copy(this.baseCamPos);
+        this.lookAtTarget = new THREE.Vector3(0, 0.95, 0);
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.container.appendChild(this.renderer.domElement);
+
+        this.mouse = new THREE.Vector2();
+        this.raycaster = new THREE.Raycaster();
+
+        this.innerGame = new InnerGame((state, step) => this.handleInnerStateChange(state, step));
+        this.screenTexture = new THREE.CanvasTexture(this.innerGame.canvas);
+        this.screenTexture.minFilter = THREE.LinearFilter;
+
+        this.buttons = {};
+        this.clawsGroup = new THREE.Group();
+        this.targetClawY = -1.6;
+        this.distantScreens = [];
+        this.roomBubbles = [];
+        this.endingTriggered = false;
+
+        this.setupLights();
+        this.buildDeskAndMonitor();
+        this.buildControlPad();
+        this.buildPlayerClaws();
+        this.buildAbyssPot();
+        this.setupEvents();
+    }
+
+    setupLights() {
+        this.ambientLight = new THREE.AmbientLight(0x222a38, 0.7);
+        this.scene.add(this.ambientLight);
+
+        // Glow coming from the CRT screen
+        this.screenLight = new THREE.PointLight(0x5588ff, 1.4, 7);
+        this.screenLight.position.set(0, 1.15, 0.65);
+        this.scene.add(this.screenLight);
+
+        // Overhead lamp
+        this.deskLamp = new THREE.SpotLight(0xffeedd, 0.9, 15, Math.PI / 3, 0.6);
+        this.deskLamp.position.set(0, 4.5, 2.0);
+        this.deskLamp.castShadow = true;
+        this.scene.add(this.deskLamp);
+    }
+
+    buildDeskAndMonitor() {
+        // Desk Surface
+        const deskGeo = new THREE.BoxGeometry(7.5, 0.3, 4.2);
+        const deskMat = new THREE.MeshStandardMaterial({ color: 0x1a1817, roughness: 0.85 });
+        const desk = new THREE.Mesh(deskGeo, deskMat);
+        desk.position.set(0, -0.15, 0.8);
+        desk.receiveShadow = true;
+        this.scene.add(desk);
+
+        // Monitor Outer Casing
+        const monGroup = new THREE.Group();
+        const caseMat = new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.6 });
+
+        const mainBox = new THREE.Mesh(new THREE.BoxGeometry(2.55, 1.95, 1.4), caseMat);
+        mainBox.position.set(0, 1.12, -0.2);
+        mainBox.castShadow = true;
+        monGroup.add(mainBox);
+
+        // Monitor Stand
+        const stand = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.25, 0.9), caseMat);
+        stand.position.set(0, 0.1, -0.15);
+        monGroup.add(stand);
+
+        // Screen Bezel Frame
+        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x16181a, roughness: 0.7 });
+        const bezel = new THREE.Mesh(new THREE.BoxGeometry(2.28, 1.72, 0.1), bezelMat);
+        bezel.position.set(0, 1.12, 0.48);
+        monGroup.add(bezel);
+
+        // Active 2D Game Screen Plane
+        const screenGeo = new THREE.PlaneGeometry(2.12, 1.58);
+        const screenMat = new THREE.MeshBasicMaterial({ map: this.screenTexture });
+        this.screenMesh = new THREE.Mesh(screenGeo, screenMat);
+        this.screenMesh.position.set(0, 1.12, 0.54);
+        monGroup.add(this.screenMesh);
+
+        this.scene.add(monGroup);
+    }
+
+    createButtonLabelTexture(text, bgColor, textColor = "#ffffff") {
+        const c = document.createElement('canvas');
+        c.width = 256;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, 256, 128);
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.lineWidth = 6;
+        ctx.strokeRect(4, 4, 248, 120);
+        ctx.fillStyle = textColor;
+        ctx.font = "bold 36px Courier New";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, 128, 64);
+        return new THREE.CanvasTexture(c);
+    }
+
+    buildControlPad() {
+        // Control Pad Base on the Desk
+        const padBase = new THREE.Mesh(
+            new THREE.BoxGeometry(2.9, 0.12, 0.85),
+            new THREE.MeshStandardMaterial({ color: 0x121417, roughness: 0.5 })
+        );
+        padBase.position.set(0, 0.06, 1.45);
+        this.scene.add(padBase);
+
+        const makeButton = (id, label, x, width, colorHex, labelBg) => {
+            const group = new THREE.Group();
+            group.position.set(x, 0.16, 1.45);
+
+            const mat = new THREE.MeshStandardMaterial({
+                color: colorHex,
+                roughness: 0.35,
+                metalness: 0.1
+            });
+            const topMat = new THREE.MeshBasicMaterial({
+                map: this.createButtonLabelTexture(label, labelBg)
+            });
+
+            const materials = [mat, mat, topMat, mat, mat, mat];
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.14, 0.52), materials);
+            mesh.userData = { buttonId: id };
+            group.add(mesh);
+            this.scene.add(group);
+
+            this.buttons[id] = {
+                group,
+                mesh,
+                baseY: 0.16,
+                targetY: 0.16,
+                disabled: false
+            };
+        };
+
+        makeButton('left', '< [A]', -0.92, 0.62, 0x2e3b4e, '#263345');
+        makeButton('right', '> [D]', -0.18, 0.62, 0x2e3b4e, '#263345');
+        makeButton('action', 'ПУСК [ПРОБЕЛ]', 0.78, 1.05, 0x992632, '#8c1d28');
+    }
+
+    buildPlayerClaws() {
+        // Red Lobster Claws that slowly creep onto the desk in deeper layers
+        const clawMat = new THREE.MeshStandardMaterial({
+            color: 0xb8251e,
+            roughness: 0.4,
+            metalness: 0.1
+        });
+
+        const createSingleClaw = (side) => {
+            const cGroup = new THREE.Group();
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.2, 12), clawMat);
+            arm.rotation.x = Math.PI / 2.3;
+            cGroup.add(arm);
+
+            const pincerMain = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.75, 12), clawMat);
+            pincerMain.rotation.x = -Math.PI / 2.2;
+            pincerMain.position.set(0, 0.12, -0.65);
+            cGroup.add(pincerMain);
+
+            const pincerSub = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.55, 10), clawMat);
+            pincerSub.rotation.x = -Math.PI / 2.2;
+            pincerSub.rotation.z = side * 0.35;
+            pincerSub.position.set(side * -0.14, 0.08, -0.58);
+            cGroup.add(pincerSub);
+
+            cGroup.position.set(side * 1.45, 0, 2.25);
+            cGroup.rotation.y = side * 0.25;
+            return cGroup;
+        };
+
+        this.clawsGroup.add(createSingleClaw(-1));
+        this.clawsGroup.add(createSingleClaw(1));
+        this.clawsGroup.position.y = this.targetClawY;
+        this.scene.add(this.clawsGroup);
+    }
+
+    buildAbyssPot() {
+        // Giant metallic boiling pot surrounding the whole scene, revealed at the end
+        const potGeo = new THREE.CylinderGeometry(16, 14, 28, 32, 8, true);
+        const potMat = new THREE.MeshStandardMaterial({
+            color: 0x1a1c20,
+            roughness: 0.4,
+            metalness: 0.8,
+            side: THREE.BackSide,
+            wireframe: false
+        });
+        const potMesh = new THREE.Mesh(potGeo, potMat);
+        potMesh.position.set(0, 10, -2);
+        this.scene.add(potMesh);
+
+        // Other distant glowing monitors in the abyss (other procrastinating lobsters)
+        const screenGeo = new THREE.PlaneGeometry(1.6, 1.2);
+        for (let i = 0; i < 28; i++) {
+            const angle = (i / 28) * Math.PI * 2 + (Math.random() * 0.2);
+            const radius = 6 + Math.random() * 7;
+            const y = -1 + Math.random() * 11;
+            if (Math.abs(angle - Math.PI / 2) < 0.45 && y < 4) continue; // Keep front clear
+
+            const mat = new THREE.MeshBasicMaterial({
+                color: i % 2 === 0 ? 0xff2a38 : 0x3888ff,
+                transparent: true,
+                opacity: 0
+            });
+            const m = new THREE.Mesh(screenGeo, mat);
+            m.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius - 2);
+            m.lookAt(0, y, 0);
+            this.scene.add(m);
+            this.distantScreens.push(m);
+        }
+
+        // Rising 3D steam/bubbles in the room
+        const bubbleGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        const bubbleMat = new THREE.MeshBasicMaterial({
+            color: 0xff4433,
+            transparent: true,
+            opacity: 0.35
+        });
+        for (let i = 0; i < 45; i++) {
+            const b = new THREE.Mesh(bubbleGeo, bubbleMat);
+            b.position.set(
+                (Math.random() - 0.5) * 9,
+                Math.random() * 7 - 1,
+                (Math.random() - 0.5) * 6
+            );
+            b.visible = false;
+            this.scene.add(b);
+            this.roomBubbles.push(b);
+        }
+    }
+
+    handleInnerStateChange(state, step) {
+        if (state === 1) {
+            this.screenLight.color.setHex(0x3399ff);
+        } else if (state === 2) {
+            this.screenLight.color.setHex(0xff6622);
+            this.scene.fog.color.setHex(0x120402);
+            this.targetClawY = -0.35; // Claws begin appearing
+        } else if (state === 3) {
+            this.screenLight.color.setHex(0xff1122);
+            this.scene.fog.color.setHex(0x1c0004);
+            this.targetClawY = 0.22; // Claws fully on the desk
+            this.roomBubbles.forEach(b => b.visible = true);
+        } else if (state === 4) {
+            // Disable Left & Right buttons physically
+            ['left', 'right'].forEach(id => {
+                this.buttons[id].disabled = true;
+                this.buttons[id].targetY = 0.03;
+            });
+            // Pull camera back slightly with each press
+            this.targetCamPos.set(0, 1.65 + step * 0.45, 3.45 + step * 1.15);
+        } else if (state === 5) {
+            // Final Ending Pullback
+            this.buttons['action'].disabled = true;
+            this.buttons['action'].targetY = 0.03;
+            this.targetCamPos.set(0, 5.2, 11.5);
+            this.endingTriggered = true;
+
+            setTimeout(() => {
+                const overlay = document.getElementById('ending-overlay');
+                const textEl = document.getElementById('ending-text');
+                textEl.textContent =
+                    "КОМПИЛЯЦИЯ ЗАВЕРШЕНА.\n\n" +
+                    "Ты хотел программу, которая избавит тебя от труда жить.\n" +
+                    "Алгоритм выполнил твой запрос безупречно.\n\n" +
+                    "Годы сгорели в рекурсии чужого кода, пока вода вокруг закипала.\n" +
+                    "На дне этой кастрюли тысячи таких же экранов.\n\n" +
+                    "Твоё время полностью сэкономлено.\n" +
+                    "От него ничего не осталось.";
+                overlay.style.opacity = "1";
+                document.getElementById('ui-hint').style.opacity = "0";
+            }, 2200);
+        }
+    }
+
+    pressButton(id, isDown) {
+        const btn = this.buttons[id];
+        if (!btn || btn.disabled) return;
+
+        if (isDown) {
+            btn.targetY = 0.09;
+            sound.playButtonClick(id === 'action');
+            if (id === 'left') this.innerGame.input.left = true;
+            if (id === 'right') this.innerGame.input.right = true;
+            if (id === 'action') this.innerGame.triggerAction();
+        } else {
+            btn.targetY = btn.baseY;
+            if (id === 'left') this.innerGame.input.left = false;
+            if (id === 'right') this.innerGame.input.right = false;
+        }
+    }
+
+    setupEvents() {
+        window.addEventListener('resize', () => {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        window.addEventListener('mousedown', () => {
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const meshes = Object.values(this.buttons).map(b => b.mesh);
+            const intersects = this.raycaster.intersectObjects(meshes);
+            if (intersects.length > 0) {
+                const id = intersects[0].object.userData.buttonId;
+                this.activeMouseBtn = id;
+                this.pressButton(id, true);
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (this.activeMouseBtn) {
+                this.pressButton(this.activeMouseBtn, false);
+                this.activeMouseBtn = null;
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') this.pressButton('left', true);
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') this.pressButton('right', true);
+            if (e.code === 'Space' || e.code === 'Enter') {
+                e.preventDefault();
+                this.pressButton('action', true);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') this.pressButton('left', false);
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') this.pressButton('right', false);
+            if (e.code === 'Space' || e.code === 'Enter') this.pressButton('action', false);
+        });
+    }
+
+    update(dt) {
+        this.innerGame.update(dt);
+        this.innerGame.render();
+        this.screenTexture.needsUpdate = true;
+
+        // Animate 3D buttons
+        for (const key in this.buttons) {
+            const b = this.buttons[key];
+            b.group.position.y += (b.targetY - b.group.position.y) * 0.25;
+        }
+
+        // Animate player's lobster claws creeping onto the desk
+        this.clawsGroup.position.y += (this.targetClawY - this.clawsGroup.position.y) * dt * 1.5;
+        this.clawsGroup.position.z = 2.25 + Math.sin(performance.now() * 0.002) * 0.04;
+
+        // Animate rising room bubbles
+        for (const b of this.roomBubbles) {
+            if (b.visible) {
+                b.position.y += dt * 1.2;
+                if (b.position.y > 6.5) b.position.y = -0.5;
+            }
+        }
+
+        // Fade in distant monitors in the abyss during ending
+        if (this.endingTriggered) {
+            for (const m of this.distantScreens) {
+                m.material.opacity = Math.min(0.65, m.material.opacity + dt * 0.15);
+            }
+        }
+
+        // Smooth Camera Parallax & Pullback
+        const desiredX = this.targetCamPos.x + this.mouse.x * 0.22;
+        const desiredY = this.targetCamPos.y + this.mouse.y * 0.14;
+        this.camera.position.x += (desiredX - this.camera.position.x) * dt * 2.5;
+        this.camera.position.y += (desiredY - this.camera.position.y) * dt * 2.5;
+        this.camera.position.z += (this.targetCamPos.z - this.camera.position.z) * dt * 1.2;
+        this.camera.lookAt(this.lookAtTarget);
+
+        this.renderer.render(this.scene, this.camera);
+    }
+}
+
+// ==========================================
+// BOOTSTRAP
+// ==========================================
+const world = new World3D();
+let lastTime = performance.now();
+
+function animate(now) {
+    requestAnimationFrame(animate);
+    const dt = Math.min(0.1, (now - lastTime) / 1000);
+    lastTime = now;
+    world.update(dt);
+}
+
+document.getElementById('start-overlay').addEventListener('click', function () {
+    sound.init();
+    this.style.opacity = '0';
+    setTimeout(() => {
+        this.style.display = 'none';
+    }, 1500);
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
