@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>VISCERA</title>
+    <style>
+        body {
+            background-color: #050505;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 960px;
+            height: 600px;
+            box-shadow: 0 0 50px rgba(150, 0, 0, 0.5);
+            border: 4px solid #333;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated; /* Crucial for 90s VGA look */
+            cursor: none;
+        }
+        /* CRT Scanline Effect */
+        #crt-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+        .instructions {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="320" height="200"></canvas>
+    <div id="crt-overlay"></div>
+</div>
+<div class="instructions">
+    [LEFT CLICK] Interact / Dismiss Text &nbsp;|&nbsp; [RIGHT CLICK] Cycle Action Modes &nbsp;|&nbsp; Hover at top for Icon Bar
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- AUDIO ENGINE (Web Audio API) ---
+let audioCtx;
+function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Creepy Ambient Drone
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc1.type = 'sawtooth';
+    osc2.type = 'triangle';
+    osc1.frequency.value = 45; // Low bass
+    osc2.frequency.value = 46.5; // Binaural dissonance
+    
+    // Filter to make it muffled and dark
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 120;
+
+    gain.gain.value = 0.15;
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc1.start();
+    osc2.start();
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+    if (type === 'blip') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(800, now);
+        gain.gain.setValueAtTime(0.05, now);
+        osc.start(now);
+        osc.stop(now + 0.03);
+    } else if (type === 'gore') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+    } else if (type === 'death') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.linearRampToValueAtTime(80, now + 1.5);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 1.5);
+        osc.start(now);
+        osc.stop(now + 1.5);
+    } else if (type === 'pickup') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.setValueAtTime(600, now + 0.1);
+        gain.gain.setValueAtTime(0.1, now);
+        osc.start(now);
+        osc.stop(now + 0.2);
+    }
+}
+
+// --- GAME STATE ---
+const MODES = ['WALK', 'LOOK', 'HAND', 'TALK', 'ITEM'];
+let state = {
+    started: false,
+    modeIndex: 0,
+    currentRoom: 'cell',
+    inventory: [],
+    selectedItem: null,
+    flags: {
+        corpseCut: false,
+        cellDoorUnlocked: false,
+        gotHeart: false,
+        groundMeat: false,
+        meatPoisoned: false,
+        monsterDead: false
+    },
+    player: { x: 160, y: 150, targetX: 160, targetY: 150, speed: 1.5, moving: false, callback: null },
+    mouse: { x: 160, y: 100 },
+    dialog: null,
+    dead: false,
+    deathReason: "",
+    showInventory: false,
+    ticks: 0
+};
+
+function resetGame() {
+    state.currentRoom = 'cell';
+    state.inventory = [];
+    state.selectedItem = null;
+    state.modeIndex = 0;
+    for (let k in state.flags) state.flags[k] = false;
+    state.player.x = 160; state.player.y = 150;
+    state.player.targetX = 160; state.player.targetY = 150;
+    state.dead = false;
+    state.dialog = "You awake on a cold slab. The stench of copper and rotting meat fills your nostrils. Your stomach is stitched shut with thick black wire.";
+}
+
+// --- ITEMS ---
+const ITEMS = {
+    'scalpel': { name: 'Rusty Scalpel', desc: 'A jagged surgical blade coated in dried brown crust.', color: '#aaa' },
+    'key': { name: 'Bone Key', desc: 'A key carved from a human femur. Still slick with marrow.', color: '#eec' },
+    'heart': { name: 'Putrid Heart', desc: 'A bloated, blackening organ. It occasionally twitches.', color: '#601' },
+    'meat': { name: 'Minced Flesh', desc: 'Raw, ground-up myocardium. Maggots writhe within it.', color: '#922' },
+    'poison_meat': { name: 'Bile-Soaked Meat', desc: 'The minced flesh is now saturated with corrosive industrial acid.', color: '#4a2' }
+};
+
+// --- ROOM DEFINITIONS ---
+const ROOMS = {
+    'cell': {
+        draw: () => {
+            // Background - Dirty Tiles
+            ctx.fillStyle = '#1a0d0d'; ctx.fillRect(0, 0, 320, 200);
+            ctx.strokeStyle = '#261313';
+            for(let i=0; i<320; i+=20) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,130); ctx.stroke(); }
+            for(let i=0; i<130; i+=20) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(320,i); ctx.stroke(); }
+            
+            // Floor
+            ctx.fillStyle = '#221515';
+            ctx.fillRect(0, 130, 320, 70);
+            
+            // Blood Pool
+            ctx.fillStyle = '#4a0000';
+            ctx.beginPath(); ctx.ellipse(100, 160, 40, 15, 0, 0, Math.PI*2); ctx.fill();
+
+            // Door (Left)
+            ctx.fillStyle = state.flags.cellDoorUnlocked ? '#050505' : '#3a2010';
+            ctx.fillRect(20, 50, 40, 80);
+            ctx.strokeStyle = '#111'; ctx.strokeRect(20, 50, 40, 80);
+
+            // Hanging Corpse (Center-Left)
+            ctx.fillStyle = '#8a665d';
+            ctx.fillRect(90, 30, 20, 60); // Torso
+            ctx.fillStyle = '#500';
+            if (state.flags.corpseCut) {
+                ctx.fillRect(95, 50, 10, 30); // Cut open
+                ctx.fillRect(98, 80, 5, 40); // Intestines hanging
+            } else {
+                // Stitches
+                ctx.strokeStyle = '#000';
+                ctx.beginPath(); ctx.moveTo(100, 40); ctx.lineTo(100, 80); ctx.stroke();
+            }
+
+            // Operating Slab (Center-Right)
+            ctx.fillStyle = '#555';
+            ctx.fillRect(150, 120, 70, 20);
+            ctx.fillStyle = '#333';
+            ctx.fillRect(175, 140, 20, 20);
+            ctx.fillStyle = '#600';
+            ctx.fillRect(155, 120, 60, 5); // Blood on slab
+
+            // Scalpel on slab
+            if (!state.inventory.includes('scalpel')) {
+                ctx.fillStyle = '#ccc';
+                ctx.fillRect(180, 117, 10, 3);
+            }
+
+            // Table with Head in a Jar (Right)
+            ctx.fillStyle = '#332211';
+            ctx.fillRect(260, 100, 40, 40);
+            ctx.fillStyle = 'rgba(100, 180, 100, 0.4)'; // Jar
+            ctx.fillRect(270, 75, 20, 25);
+            ctx.fillStyle = '#997766'; // Head
+            ctx.fillRect(274, 82, 12, 15);
+            // Blinking eyes
+            if (state.ticks % 100 < 90) {
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(276, 86, 2, 2); ctx.fillRect(282, 86, 2, 2);
+            }
+        },
+        hotspots: [
+            {
+                name: 'Heavy Door', x: 20, y: 50, w: 40, h: 80, walkX: 40, walkY: 135,
+                onLook: () => showText("A heavy iron door, rusted with age and claw marks from the inside."),
+                onHand: () => {
+                    if (state.flags.cellDoorUnlocked) {
+                        state.currentRoom = 'hallway';
+                        state.player.x = 280; state.player.y = 150;
+                        state.player.targetX = 280; state.player.targetY = 150;
+                    } else {
+                        showText("It's bolted shut from the outside. There is a keyhole shaped like a jagged bone.");
+                    }
+                },
+                onTalk: () => showText("\"HELP ME!\" you scream. Only a wet, gurgling laugh echoes back from the other side."),
+                onItem: (item) => {
+                    if (item === 'key') {
+                        playSound('pickup');
+                        state.flags.cellDoorUnlocked = true;
+                        showText("The Bone Key snaps into the lock. With a sickening crunch, the mechanism turns and the door swings open.");
+                    } else {
+                        showText("That won't open the door.");
+                    }
+                }
+            },
+            {
+                name: 'Flayed Corpse', x: 85, y: 30, w: 30, h: 80, walkX: 100, walkY: 140,
+                onLook: () => {
+                    if (!state.flags.corpseCut) showText("A skinless cadaver suspended by meat hooks. Its bloated abdomen is bulging, poorly sutured with thick twine.");
+                    else showText("The corpse's belly is sliced wide open. Coils of grey, slimy intestines spill onto the floor.");
+                },
+                onHand: () => {
+                    if (!state.flags.corpseCut) showText("You press the bloated stomach. Something hard shifts inside the rot, but the sutures are too tight to rip by hand.");
+                    else showText("You rummage through the cold offal again, getting covered in clot, but find nothing else.");
+                },
+                onTalk: () => showText("The jaw has been ripped off. It cannot answer you."),
+                onItem: (item) => {
+                    if (item === 'scalpel' && !state.flags.corpseCut) {
+                        playSound('gore');
+                        state.flags.corpseCut = true;
+                        state.inventory.push('key');
+                        showText("You slice the taut sutures. Rancid gas hisses out as the guts cascade to the floor. Reaching into the warm bile, you pull out a Bone Key.");
+                    } else {
+                        showText("Mutilating it further won't help.");
+                    }
+                }
+            },
+            {
+                name: 'Surgical Slab', x: 150, y: 115, w: 70, h: 45, walkX: 185, walkY: 165,
+                onLook: () => {
+                    if (!state.inventory.includes('scalpel')) showText("The blood-caked metal table where you woke up. Restraint straps hang loose. A rusty scalpel glints in the coagulated gore.");
+                    else showText("A cold steel slab stained with decades of agony.");
+                },
+                onHand: () => {
+                    if (!state.inventory.includes('scalpel')) {
+                        playSound('pickup');
+                        state.inventory.push('scalpel');
+                        showText("You take the Rusty Scalpel, wiping a chunk of someone else's fat off the blade.");
+                    } else {
+                        showText("You refuse to get back on that table.");
+                    }
+                },
+                onTalk: () => showText("Why would you talk to a table? Are you losing your mind already?"),
+                onItem: () => showText("Leave the slab alone.")
+            },
+            {
+                name: 'Head in a Jar', x: 265, y: 70, w: 30, h: 35, walkX: 255, walkY: 145,
+                onLook: () => showText("A severed head floating in yellow formaldehdye. Wires are jammed into its brainstem. Its bloodshot eyes track your movements frantically."),
+                onHand: () => showText("You tap the glass. The head silently mouths a scream, bubbles of mucus rising from its severed trachea."),
+                onTalk: () => showText("You ask how to escape. The head's eyes dart desperately toward the bloated corpse hanging on the wall, then back to the surgical slab."),
+                onItem: (item) => {
+                    if (item === 'scalpel') showText("The glass is too thick to break with a scalpel.");
+                    else showText("The head twitches in revulsion as you hold that up to the glass.");
+                }
+            }
+        ]
+    },
+
+    'hallway': {
+        draw: () => {
+            // Flesh Walls
+            ctx.fillStyle = '#3a0a0a'; ctx.fillRect(0, 0, 320, 200);
+            
+            // Pulsing veins on wall
+            ctx.strokeStyle = '#601010';
+            ctx.lineWidth = 2 + Math.sin(state.ticks * 0.05);
+            ctx.beginPath();
+            ctx.moveTo(0, 40); ctx.quadraticCurveTo(100, 80, 200, 20); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(320, 100); ctx.quadraticCurveTo(150, 60, 50, 120); ctx.stroke();
+            ctx.lineWidth = 1;
+
+            // Floor (Grating)
+            ctx.fillStyle = '#151515'; ctx.fillRect(0, 130, 320, 70);
+
+            // Exit Door (Left)
+            ctx.fillStyle = '#445544'; ctx.fillRect(10, 40, 40, 90);
+            ctx.fillStyle = '#0f0'; ctx.fillRect(25, 30, 10, 5); // "EXIT" sign
+
+            // Door to Abattoir (Center)
+            ctx.fillStyle = '#220000'; ctx.fillRect(140, 50, 40, 80);
+
+            // Door to Cell (Right)
+            ctx.fillStyle = '#111'; ctx.fillRect(280, 50, 30, 80);
+
+            // Gaping Pit (Bottom Center)
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.ellipse(210, 175, 35, 15, 0, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#400'; ctx.stroke();
+
+            // THE MONSTER (Blocking Left Exit)
+            if (!state.flags.monsterDead) {
+                ctx.fillStyle = '#7a3b3b';
+                let pulse = Math.sin(state.ticks * 0.1) * 3;
+                ctx.beginPath(); ctx.arc(65, 115, 25 + pulse, 0, Math.PI*2); ctx.fill();
+                // Mouths & Eyes
+                ctx.fillStyle = '#000'; ctx.fillRect(55, 110, 20, 15); // Maw
+                ctx.fillStyle = '#fff'; // Teeth
+                for(let i=55; i<75; i+=4) { ctx.fillRect(i, 110, 2, 4); ctx.fillRect(i, 121, 2, 4); }
+                ctx.fillStyle = '#ff0';
+                ctx.fillRect(50, 95, 4, 4); ctx.fillRect(70, 100, 6, 6); ctx.fillRect(60, 90, 3, 3);
+            } else {
+                // Melted Monster
+                ctx.fillStyle = '#2a4a1a';
+                ctx.beginPath(); ctx.ellipse(65, 135, 35, 10, 0, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#866';
+                ctx.fillRect(55, 130, 8, 5); // Skull fragment
+            }
+        },
+        hotspots: [
+            {
+                name: 'Cell Door', x: 280, y: 50, w: 30, h: 80, walkX: 285, walkY: 140,
+                onLook: () => showText("The door leading back to your surgical cell."),
+                onHand: () => {
+                    state.currentRoom = 'cell';
+                    state.player.x = 50; state.player.y = 140;
+                    state.player.targetX = 50; state.player.targetY = 140;
+                },
+                onTalk: () => showText("No need to shout in there."),
+                onItem: () => showText("It's already unlocked.")
+            },
+            {
+                name: 'Abattoir Door', x: 140, y: 50, w: 40, h: 80, walkX: 160, walkY: 135,
+                onLook: () => showText("A heavy freezer-style door dripping with condensation and blood. A grinding noise comes from within."),
+                onHand: () => {
+                    state.currentRoom = 'morgue';
+                    state.player.x = 160; state.player.y = 170;
+                    state.player.targetX = 160; state.player.targetY = 170;
+                },
+                onTalk: () => showText("The sound of machinery drowns out your voice."),
+                onItem: () => showText("Just use your hand to open it.")
+            },
+            {
+                name: 'Shaft of Teeth', x: 175, y: 160, w: 70, h: 30, walkX: 210, walkY: 155,
+                onLook: () => showText("A jagged hole in the floor. Looking down, you see hundreds of pale, starving limbs reaching upward from the pitch black."),
+                onHand: () => {
+                    die("You reach down into the pit. Dozens of manic, degloved hands instantly seize your arm, dragging you down into the dark. They eat you alive, starting with your face.");
+                },
+                onTalk: () => showText("You whisper into the pit. A chorus of raspy, starving groans answers from below."),
+                onItem: () => showText("Don't throw your items away. You need them to survive.")
+            },
+            {
+                name: 'The Amalgam', x: 40, y: 85, w: 50, h: 55, walkX: 110, walkY: 135,
+                onLook: () => {
+                    if (!state.flags.monsterDead) showText("A horrific fusion of several stitched-together bodies, pulsing with tumors and bristling with weeping eyes. A gaping, tooth-lined maw drools saliva onto the floor, blocking the exit.");
+                    else showText("A bubbling puddle of dissolved flesh, liquefied organs, and protruding bones. The stench is astronomical.");
+                },
+                onHand: () => {
+                    if (!state.flags.monsterDead) {
+                        die("You walk up and touch the abomination. Its tendrils lash out, pulling you into its central maw. Your spine is snapped in half before you are swallowed whole.");
+                    } else {
+                        showText("Touching the acidic sludge would melt your fingers off.");
+                    }
+                },
+                onTalk: () => {
+                    if (!state.flags.monsterDead) showText("\"Meeeeat...\" the creature gurgles in five overlapping voices. \"Sooo... huuungry...\"");
+                    else showText("It's dead. Mercifully.");
+                },
+                onItem: (item) => {
+                    if (state.flags.monsterDead) { showText("It's already dead."); return; }
+                    if (item === 'scalpel') {
+                        die("You lunge at the giant beast with a tiny scalpel. It casually bites your head off. What were you thinking?");
+                    } else if (item === 'heart' || item === 'meat') {
+                        showText("It snaps greedily at the meat, but feeding it clean flesh will only make it stronger! You need to taint it first.");
+                    } else if (item === 'poison_meat') {
+                        playSound('gore');
+                        state.flags.monsterDead = true;
+                        state.inventory = state.inventory.filter(i => i !== 'poison_meat');
+                        state.selectedItem = null; state.modeIndex = 0;
+                        showText("You toss the bile-soaked meat into its maw. It swallows it whole. Seconds later, it shrieks as the acid eats it from the inside out, collapsing into a puddle of boiling slurry!");
+                    } else {
+                        showText("The creature isn't interested in that.");
+                    }
+                }
+            },
+            {
+                name: 'Exit Door', x: 10, y: 40, w: 30, h: 90, walkX: 35, walkY: 135,
+                onLook: () => showText("A heavy steel door with a glowing green EXIT sign above it. Freedom."),
+                onHand: () => {
+                    if (!state.flags.monsterDead) {
+                        die("You try to squeeze past the Amalgam to reach the door. It latches onto your ribcage with its jaws and rips you in two.");
+                    } else {
+                        showText("VICTORY! You push open the heavy door and stumble out into the cold night air, drenched in blood and offal, forever scarred by the horrors of the Crimson Clinic. [THE END]");
+                    }
+                },
+                onTalk: () => showText("Stop talking and get out!"),
+                onItem: () => showText("Just open it with your hand!")
+            }
+        ]
+    },
+
+    'morgue': {
+        draw: () => {
+            // Walls
+            ctx.fillStyle = '#0d1a1a'; ctx.fillRect(0, 0, 320, 200);
+            // Floor
+            ctx.fillStyle = '#112222'; ctx.fillRect(0, 130, 320, 70);
+
+            // Corpse Drawers (Back Wall)
+            ctx.fillStyle = '#445555';
+            for (let x=20; x<120; x+=35) {
+                for (let y=30; y<100; y+=30) {
+                    ctx.fillRect(x, y, 30, 25);
+                    ctx.strokeStyle = '#111'; ctx.strokeRect(x, y, 30, 25);
+                    ctx.fillStyle = '#222'; ctx.fillRect(x+10, y+10, 10, 4); // Handle
+                    ctx.fillStyle = '#445555';
+                }
+            }
+            // One Open Drawer with corpse foot
+            ctx.fillStyle = '#111'; ctx.fillRect(55, 60, 30, 25);
+            ctx.fillStyle = '#778877'; ctx.fillRect(60, 65, 25, 15); // Open tray
+
+            // Industrial Meat Grinder (Center)
+            ctx.fillStyle = '#555';
+            ctx.fillRect(150, 90, 40, 40);
+            ctx.fillStyle = '#333';
+            ctx.beginPath(); ctx.moveTo(145, 70); ctx.lineTo(195, 70); ctx.lineTo(180, 90); ctx.lineTo(160, 90); ctx.fill(); // Funnel
+            ctx.fillStyle = '#700'; ctx.fillRect(150, 70, 40, 5); // Blood rim
+
+            // Acid Vat (Right)
+            ctx.fillStyle = '#333';
+            ctx.fillRect(240, 90, 60, 50);
+            ctx.fillStyle = '#55ff00';
+            ctx.fillRect(245, 92, 50, 10);
+            // Bubbles
+            if (state.ticks % 20 < 10) ctx.fillRect(255, 88, 4, 4);
+            if (state.ticks % 30 < 15) ctx.fillRect(275, 89, 3, 3);
+
+            // Exit back to Hallway (Bottom)
+            ctx.fillStyle = '#400';
+            ctx.fillRect(130, 190, 60, 10);
+        },
+        hotspots: [
+            {
+                name: 'Hallway Exit', x: 120, y: 180, w: 80, h: 20, walkX: 160, walkY: 185,
+                onLook: () => showText("The way back to the flesh corridor."),
+                onHand: () => {
+                    state.currentRoom = 'hallway';
+                    state.player.x = 160; state.player.y = 140;
+                    state.player.targetX = 160; state.player.targetY = 140;
+                },
+                onTalk: () => showText("No time for that."),
+                onItem: () => showText("Walk there to leave.")
+            },
+            {
+                name: 'Cadaver Drawers', x: 20, y: 30, w: 100, h: 85, walkX: 70, walkY: 140,
+                onLook: () => showText("Refrigerated steel vaults for the dead. One drawer is ajar, revealing a mangled torso with its ribcage cracked open like a lobster shell."),
+                onHand: () => {
+                    if (!state.flags.gotHeart) {
+                        playSound('gore');
+                        state.flags.gotHeart = true;
+                        state.inventory.push('heart');
+                        showText("You reach into the open chest cavity of the corpse, snapping a brittle rib, and wrench loose a bloated, Putrid Heart.");
+                    } else {
+                        showText("The rest of the organs have liquefied into black sludge. Nothing useful left.");
+                    }
+                },
+                onTalk: () => showText("The dead keep their secrets."),
+                onItem: () => showText("You don't need to put anything in the corpse.")
+            },
+            {
+                name: 'Meat Grinder', x: 145, y: 70, w: 50, h: 60, walkX: 170, walkY: 145,
+                onLook: () => showText("A massive, motorized industrial bone-and-meat grinder. The blades inside are spinning relentlessly with a deafening roar."),
+                onHand: () => {
+                    die("Overcome by an intrusive thought, you plunge your hand into the funnel. The rusted augers catch your fingers, pulling your entire arm, then your head, into the mulching blades.");
+                },
+                onTalk: () => showText("WHIRRRRRRRRR-CRUNCH."),
+                onItem: (item) => {
+                    if (item === 'heart') {
+                        playSound('gore');
+                        state.flags.groundMeat = true;
+                        state.inventory = state.inventory.filter(i => i !== 'heart');
+                        state.inventory.push('meat');
+                        state.selectedItem = null; state.modeIndex = 0;
+                        showText("You drop the Putrid Heart into the chute. It is violently shredded into a pile of wet, maggot-ridden Minced Flesh, which you scoop up from the output tray.");
+                    } else {
+                        showText("Throwing that into the grinder would destroy it.");
+                    }
+                }
+            },
+            {
+                name: 'Vat of Acid', x: 240, y: 85, w: 60, h: 55, walkX: 230, walkY: 145,
+                onLook: () => showText("A steel basin filled with fuming, neon-green chemical digestive acid used to dissolve medical waste. Half a human skull floats on top."),
+                onHand: () => {
+                    die("You dip your hands into the glowing vat. The flesh instantly boils off your bones in a cloud of toxic green smoke. You collapse into shock and die.");
+                },
+                onTalk: () => showText("The noxious fumes burn your throat as you try to speak."),
+                onItem: (item) => {
+                    if (item === 'meat') {
+                        playSound('pickup');
+                        state.flags.meatPoisoned = true;
+                        state.inventory = state.inventory.filter(i => i !== 'meat');
+                        state.inventory.push('poison_meat');
+                        state.selectedItem = null; state.modeIndex = 0;
+                        showText("You carefully dredge the Minced Flesh across the top of the vat, soaking up the corrosive digestive bile without melting your fingers.");
+                    } else if (item === 'heart') {
+                        showText("The skin of the heart is too tough to absorb the acid properly. You need to mince it up first to increase the surface area.");
+                    } else {
+                        showText("The acid would dissolve that completely.");
+                    }
+                }
+            }
+        ]
+    }
+};
+
+// --- HELPER FUNCTIONS ---
+function showText(txt) {
+    playSound('blip');
+    state.dialog = txt;
+}
+
+function die(reason) {
+    playSound('death');
+    state.dead = true;
+    state.deathReason = reason;
+}
+
+function wrapText(context, text, x, y, maxWidth, lineHeight) {
+    const words = text.split(' ');
+    let line = '';
+    for(let n = 0; n < words.length; n++) {
+        let testLine = line + words[n] + ' ';
+        let metrics = context.measureText(testLine);
+        if (metrics.width > maxWidth && n > 0) {
+            context.fillText(line, x, y);
+            line = words[n] + ' ';
+            y += lineHeight;
+        } else {
+            line = testLine;
+        }
+    }
+    context.fillText(line, x, y);
+}
+
+// --- INPUT HANDLING ---
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
+    state.mouse.y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!state.started || state.dead || state.dialog || state.showInventory) return;
+    playSound('blip');
+    state.modeIndex = (state.modeIndex + 1) % MODES.length;
+    // Skip ITEM mode if no item is selected
+    if (MODES[state.modeIndex] === 'ITEM' && !state.selectedItem) {
+        state.modeIndex = 0;
+    }
+});
+
+canvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // Only Left Click
+
+    if (!state.started) {
+        initAudio();
+        state.started = true;
+        resetGame();
+        return;
+    }
+
+    // Handle Death Screen
+    if (state.dead) {
+        // Restore button area
+        if (state.mouse.x > 110 && state.mouse.x < 210 && state.mouse.y > 140 && state.mouse.y < 160) {
+            playSound('blip');
+            resetGame();
+        }
+        return;
+    }
+
+    // Dismiss Dialog
+    if (state.dialog) {
+        playSound('blip');
+        state.dialog = null;
+        return;
+    }
+
+    // Handle Inventory Screen
+    if (state.showInventory) {
+        // Close button
+        if (state.mouse.x > 240 && state.mouse.x < 280 && state.mouse.y > 150 && state.mouse.y < 170) {
+            playSound('blip');
+            state.showInventory = false;
+            return;
+        }
+        // Check item clicks
+        state.inventory.forEach((itemKey, idx) => {
+            let ix = 50 + (idx % 4) * 55;
+            let iy = 50 + Math.floor(idx / 4) * 45;
+            if (state.mouse.x > ix && state.mouse.x < ix + 40 && state.mouse.y > iy && state.mouse.y < iy + 30) {
+                if (MODES[state.modeIndex] === 'LOOK') {
+                    showText(ITEMS[itemKey].desc);
+                } else {
+                    playSound('pickup');
+                    state.selectedItem = itemKey;
+                    state.modeIndex = 4; // ITEM mode
+                    state.showInventory = false;
+                }
+            }
+        });
+        return;
+    }
+
+    // Top Icon Bar Clicks
+    if (state.mouse.y < 22) {
+        playSound('blip');
+        let iconIdx = Math.floor(state.mouse.x / 40);
+        if (iconIdx < 4) {
+            state.modeIndex = iconIdx;
+        } else if (iconIdx === 4) { // Inventory Bag
+            state.showInventory = true;
+        } else if (iconIdx === 5 && state.selectedItem) {
+            state.modeIndex = 4;
+        }
+        return;
+    }
+
+    // Gameplay Clicks
+    const currentMode = MODES[state.modeIndex];
+    const room = ROOMS[state.currentRoom];
+    
+    // Check Hotspots
+    let clickedHotspot = null;
+    for (let h of room.hotspots) {
+        if (state.mouse.x >= h.x && state.mouse.x <= h.x + h.w &&
+            state.mouse.y >= h.y && state.mouse.y <= h.y + h.h) {
+            clickedHotspot = h;
+            break;
+        }
+    }
+
+    if (currentMode === 'WALK') {
+        state.player.targetX = state.mouse.x;
+        state.player.targetY = Math.max(135, state.mouse.y); // Restrict to floor
+        state.player.callback = null;
+    } else if (clickedHotspot) {
+        if (currentMode === 'LOOK') {
+            clickedHotspot.onLook();
+        } else if (currentMode === 'TALK') {
+            clickedHotspot.onTalk();
+        } else if (currentMode === 'HAND' || currentMode === 'ITEM') {
+            // Walk to object first, then interact! (True Sierra style)
+            state.player.targetX = clickedHotspot.walkX;
+            state.player.targetY = clickedHotspot.walkY;
+            state.player.callback = () => {
+                if (currentMode === 'HAND') clickedHotspot.onHand();
+                if (currentMode === 'ITEM') clickedHotspot.onItem(state.selectedItem);
+            };
+        }
+    } else {
+        if (currentMode === 'LOOK') showText("You see nothing of interest, only decay.");
+        if (currentMode === 'HAND') showText("There's nothing to touch there.");
+        if (currentMode === 'TALK') showText("Your voice echoes hollowly.");
+        if (currentMode === 'ITEM') showText("Using that there accomplishes nothing.");
+    }
+});
+
+// --- RENDERING ---
+function drawPlayer() {
+    const p = state.player;
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(p.x - 6, p.y - 2, 12, 4);
+    
+    // Legs (animate if moving)
+    ctx.fillStyle = '#334';
+    let legOffset = (p.moving && state.ticks % 10 < 5) ? 3 : 0;
+    ctx.fillRect(p.x - 4, p.y - 12, 3, 12 - legOffset);
+    ctx.fillRect(p.x + 1, p.y - 12, 3, 12 - (3 - legOffset));
+
+    // Torso (Bloodstained hospital gown)
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(p.x - 5, p.y - 26, 10, 15);
+    ctx.fillStyle = '#800'; // Blood over stomach stitches
+    ctx.fillRect(p.x - 3, p.y - 20, 6, 6);
+
+    // Head
+    ctx.fillStyle = '#d2b48c';
+    ctx.fillRect(p.x - 4, p.y - 34, 8, 8);
+    // Hair
+    ctx.fillStyle = '#211';
+    ctx.fillRect(p.x - 4, p.y - 35, 8, 3);
+}
+
+function drawUI() {
+    // Hovering near top reveals Icon Bar
+    if (state.mouse.y < 25 || state.showInventory) {
+        ctx.fillStyle = '#888';
+        ctx.fillRect(0, 0, 320, 20);
+        ctx.strokeStyle = '#fff'; ctx.strokeRect(1, 1, 318, 18);
+
+        const icons = ['WALK', 'LOOK', 'HAND', 'TALK', 'INV', 'ITEM'];
+        icons.forEach((ic, idx) => {
+            let x = idx * 40 + 5;
+            ctx.fillStyle = (state.modeIndex === idx) ? '#444' : '#666';
+            ctx.fillRect(x, 2, 32, 16);
+            ctx.fillStyle = '#fff';
+            ctx.font = '8px Courier';
+            if (ic === 'ITEM') {
+                if (state.selectedItem) {
+                    ctx.fillStyle = ITEMS[state.selectedItem].color;
+                    ctx.fillRect(x + 8, 4, 16, 12);
+                }
+            } else {
+                ctx.fillText(ic, x + 4, 12);
+            }
+        });
+    }
+
+    // Status line at bottom if hovering hotspot
+    const room = ROOMS[state.currentRoom];
+    for (let h of room.hotspots) {
+        if (state.mouse.x >= h.x && state.mouse.x <= h.x + h.w &&
+            state.mouse.y >= h.y && state.mouse.y <= h.y + h.h) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 190, 320, 10);
+            ctx.fillStyle = '#a00';
+            ctx.font = '9px Courier';
+            ctx.textAlign = 'center';
+            ctx.fillText(h.name, 160, 198);
+            ctx.textAlign = 'left';
+            break;
+        }
+    }
+
+    // Inventory Window
+    if (state.showInventory) {
+        ctx.fillStyle = '#aaa';
+        ctx.fillRect(30, 30, 260, 150);
+        ctx.strokeStyle = '#000'; ctx.strokeRect(32, 32, 256, 146);
+        
+        ctx.fillStyle = '#000';
+        ctx.font = '10px Courier';
+        ctx.fillText("INVENTORY (Click to Select/Look)", 40, 44);
+
+        state.inventory.forEach((itemKey, idx) => {
+            let ix = 50 + (idx % 4) * 55;
+            let iy = 55 + Math.floor(idx / 4) * 45;
+            ctx.fillStyle = '#555'; ctx.fillRect(ix, iy, 40, 30);
+            ctx.fillStyle = ITEMS[itemKey].color; ctx.fillRect(ix+10, iy+5, 20, 20);
+            ctx.fillStyle = '#000'; ctx.font = '7px Courier';
+            ctx.fillText(ITEMS[itemKey].name.split(' ')[1] || ITEMS[itemKey].name, ix, iy + 38);
+        });
+
+        // OK Button
+        ctx.fillStyle = '#777'; ctx.fillRect(240, 150, 40, 20);
+        ctx.strokeStyle = '#000'; ctx.strokeRect(240, 150, 40, 20);
+        ctx.fillStyle = '#000'; ctx.font = '10px Courier'; ctx.fillText("CLOSE", 245, 163);
+    }
+
+    // Sierra Style Dialog Box
+    if (state.dialog) {
+        ctx.fillStyle = '#ccc';
+        ctx.fillRect(30, 40, 260, 90);
+        ctx.strokeStyle = '#000';
+        ctx.strokeRect(32, 42, 256, 86);
+        ctx.strokeRect(34, 44, 252, 82);
+
+        ctx.fillStyle = '#000';
+        ctx.font = '10px Courier';
+        wrapText(ctx, state.dialog, 42, 58, 236, 12);
+    }
+
+    // Sierra Style Death Screen
+    if (state.dead) {
+        ctx.fillStyle = 'rgba(80, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, 320, 200);
+
+        ctx.fillStyle = '#ccc';
+        ctx.fillRect(20, 20, 280, 150);
+        ctx.strokeStyle = '#000';
+        ctx.strokeRect(22, 22, 276, 146);
+
+        // Skull Icon
+        ctx.fillStyle = '#000';
+        ctx.fillRect(40, 40, 25, 25);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(45, 45, 15, 12); // Cranium
+        ctx.fillRect(48, 57, 9, 6); // Jaw
+        ctx.fillStyle = '#000';
+        ctx.fillRect(47, 48, 4, 4); ctx.fillRect(54, 48, 4, 4); // Eyes
+
+        ctx.fillStyle = '#800';
+        ctx.font = 'bold 11px Courier';
+        ctx.fillText("YOU ARE DEAD", 80, 45);
+
+        ctx.fillStyle = '#000';
+        ctx.font = '9px Courier';
+        wrapText(ctx, state.deathReason, 80, 60, 205, 11);
+
+        ctx.fillText("Thanks for playing VISCERA.", 80, 130);
+
+        // Restore Button
+        ctx.fillStyle = '#888'; ctx.fillRect(110, 140, 100, 20);
+        ctx.strokeStyle = '#000'; ctx.strokeRect(110, 140, 100, 20);
+        ctx.fillStyle = '#000'; ctx.font = '10px Courier';
+        ctx.fillText("RESTART GAME", 124, 153);
+    }
+}
+
+function drawCursor() {
+    const x = state.mouse.x;
+    const y = state.mouse.y;
+    const mode = MODES[state.modeIndex];
+
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#000';
+
+    if (state.dialog || state.dead || state.showInventory || y < 22) {
+        // Standard Arrow
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 8, y + 8); ctx.lineTo(x, y + 12); ctx.fill(); ctx.stroke();
+        return;
+    }
+
+    if (mode === 'WALK') {
+        // Boot / Feet
+        ctx.fillRect(x - 4, y - 8, 4, 8);
+        ctx.fillRect(x - 4, y - 3, 9, 3);
+        ctx.strokeRect(x - 4, y - 8, 4, 8);
+    } else if (mode === 'LOOK') {
+        // Eye
+        ctx.beginPath(); ctx.ellipse(x, y, 8, 4, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#00f'; ctx.fillRect(x - 2, y - 2, 4, 4);
+    } else if (mode === 'HAND') {
+        // Hand
+        ctx.fillStyle = '#e0b090';
+        ctx.fillRect(x - 4, y - 4, 8, 8);
+        ctx.fillRect(x - 4, y - 9, 2, 5); // Fingers
+        ctx.fillRect(x - 1, y - 10, 2, 6);
+        ctx.fillRect(x + 2, y - 9, 2, 5);
+    } else if (mode === 'TALK') {
+        // Mouth
+        ctx.fillStyle = '#d00';
+        ctx.beginPath(); ctx.ellipse(x, y, 8, 4, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.fillRect(x - 5, y, 10, 1);
+    } else if (mode === 'ITEM' && state.selectedItem) {
+        ctx.fillStyle = ITEMS[state.selectedItem].color;
+        ctx.fillRect(x - 6, y - 6, 12, 12);
+        ctx.strokeRect(x - 6, y - 6, 12, 12);
+    }
+}
+
+// --- MAIN LOOP ---
+function update() {
+    state.ticks++;
+    if (!state.started || state.dead || state.dialog || state.showInventory) return;
+
+    // Move Player
+    const p = state.player;
+    const dx = p.targetX - p.x;
+    const dy = p.targetY - p.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > p.speed) {
+        p.moving = true;
+        p.x += (dx / dist) * p.speed;
+        p.y += (dy / dist) * p.speed;
+    } else {
+        p.x = p.targetX;
+        p.y = p.targetY;
+        p.moving = false;
+        if (p.callback) {
+            let cb = p.callback;
+            p.callback = null;
+            cb();
+        }
+    }
+}
+
+function render() {
+    ctx.clearRect(0, 0, 320, 200);
+
+    if (!state.started) {
+        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 320, 200);
+        ctx.fillStyle = '#900'; ctx.font = 'bold 24px Courier'; ctx.textAlign = 'center';
+        ctx.fillText("V I S C E R A", 160, 70);
+        ctx.fillStyle = '#666'; ctx.font = '10px Courier';
+        ctx.fillStyle = '#fff';
+        if (state.ticks % 60 < 30) ctx.fillText("[ CLICK TO AWAKEN ]", 160, 140);
+        ctx.textAlign = 'left';
+        return;
+    }
+
+    ROOMS[state.currentRoom].draw();
+    drawPlayer();
+    drawUI();
+    drawCursor();
+}
+
+function loop() {
+    update();
+    render();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
