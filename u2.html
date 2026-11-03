@@ -1,0 +1,1897 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>YouTube</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0000; font-family: Roboto, Arial, sans-serif; overflow: hidden; cursor: default; user-select: none; }
+#loading-screen {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: #000; display: flex; align-items: center; justify-content: center;
+  z-index: 9999; flex-direction: column;
+}
+#loading-screen p { color: #fff; font-size: 16px; margin-top: 16px; font-family: 'Courier New', monospace; }
+#taskbar {
+  position: fixed; bottom: 0; left: 0; width: 100%; height: 36px;
+  background: linear-gradient(to bottom, #245edb, #1a45bd);
+  display: flex; align-items: center; z-index: 500; padding: 0 8px;
+  border-top: 1px solid #3a7aff;
+}
+#start-btn {
+  background: linear-gradient(to right, #3c8b3c, #2d6e2d);
+  color: #fff; border: 1px outset #5aaa5a; padding: 3px 14px;
+  font-size: 13px; font-weight: bold; cursor: pointer; border-radius: 3px; margin-right: 8px;
+}
+#taskbar-browser {
+  background: rgba(255,255,255,0.15); color: #fff;
+  border: 1px solid rgba(255,255,255,0.3); padding: 3px 10px;
+  font-size: 12px; cursor: pointer; border-radius: 2px; margin-right: 4px;
+}
+#taskbar-time { margin-left: auto; color: #fff; font-size: 12px; padding: 0 8px; font-family: monospace; }
+#browser-window {
+  position: fixed; top: 0; left: 0; width: 100%; height: calc(100% - 36px);
+  background: #fff; z-index: 200; display: none; flex-direction: column;
+}
+#browser-chrome {
+  background: #dde1f0; padding: 5px 8px; border-bottom: 1px solid #aaa;
+  display: flex; align-items: center; gap: 5px; flex-shrink: 0;
+}
+#browser-back-btn, #browser-refresh-btn {
+  background: #c8d0e8; border: 1px outset #aaa; padding: 2px 10px;
+  cursor: pointer; font-size: 13px; border-radius: 2px;
+}
+#browser-url-bar {
+  flex: 1; height: 22px; border: 1px inset #888; padding: 0 6px;
+  font-size: 12px; font-family: monospace; background: #fff; color: #000;
+}
+#browser-content { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+#youtube-sim {
+  width: 100%; min-height: 100%; background: #f9f9f9;
+  transition: filter 0.3s, background 0.3s;
+}
+#yt-header {
+  position: sticky; top: 0; z-index: 100;
+  background: #fff; border-bottom: 1px solid #e0e0e0;
+  display: flex; align-items: center; padding: 0 16px; height: 54px;
+}
+#yt-logo { font-size: 22px; font-weight: 900; color: #ff0000; letter-spacing: -1px; white-space: nowrap; }
+#yt-logo span { color: #282828; }
+.yt-search-bar { flex: 1; max-width: 480px; margin: 0 20px; display: flex; }
+.yt-search-input {
+  flex: 1; height: 32px; border: 1px solid #ccc; border-right: none;
+  padding: 0 10px; font-size: 14px; outline: none;
+}
+.yt-search-btn {
+  height: 32px; width: 60px; background: #f8f8f8; border: 1px solid #ccc; cursor: pointer;
+}
+#channel-banner {
+  width: 100%; height: 180px; position: relative; overflow: hidden;
+  display: flex; align-items: flex-end; padding: 16px 24px;
+}
+#channel-info {
+  display: flex; align-items: center; padding: 14px 24px;
+  border-bottom: 1px solid #e0e0e0; background: #fff; gap: 18px;
+}
+#channel-avatar {
+  width: 76px; height: 76px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: bold; flex-shrink: 0; overflow: hidden;
+}
+.video-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px; padding: 20px 24px;
+}
+.video-card {
+  cursor: pointer; border-radius: 3px; overflow: hidden;
+  border: 1px solid transparent; transition: border-color 0.2s, transform 0.1s;
+}
+.video-card:hover { transform: translateY(-2px); }
+.video-thumb {
+  width: 100%; height: 120px; position: relative; overflow: hidden; background: #000;
+  display: flex; align-items: center; justify-content: center;
+}
+.video-thumb canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.play-icon {
+  position: absolute; font-size: 36px; color: rgba(255,255,255,0.85);
+  z-index: 3; pointer-events: none; text-shadow: 0 0 8px #000;
+}
+.video-info { padding: 8px 6px 10px; }
+.video-title { font-size: 12px; font-weight: 600; line-height: 1.4; margin-bottom: 3px; }
+.video-meta { font-size: 11px; }
+#video-player-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: #000; z-index: 600; display: none;
+  flex-direction: column; align-items: center; justify-content: flex-start;
+  overflow-y: auto; padding: 20px 0 40px;
+}
+#video-player-container {
+  width: 92%; max-width: 860px; position: relative; background: #000;
+}
+#video-canvas-main { width: 100%; display: block; image-rendering: pixelated; }
+#video-controls {
+  background: rgba(0,0,0,0.95); padding: 8px 14px;
+  display: flex; align-items: center; gap: 10px; border-top: 1px solid #222;
+}
+#video-controls button {
+  background: none; border: none; color: #fff; font-size: 18px;
+  cursor: pointer; padding: 3px 8px; border-radius: 2px;
+}
+#video-controls button:hover { background: rgba(255,0,0,0.3); }
+#progress-bar-container {
+  flex: 1; height: 5px; background: #444; border-radius: 3px; cursor: pointer; position: relative;
+}
+#progress-bar { height: 100%; background: #f00; border-radius: 3px; width: 0%; }
+#video-time { color: #aaa; font-size: 11px; font-family: monospace; white-space: nowrap; }
+#close-video-btn {
+  position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.75);
+  color: #fff; border: 1px solid #444; font-size: 20px; width: 36px; height: 36px;
+  border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  z-index: 10; line-height: 1;
+}
+#close-video-btn:hover { background: #c00; }
+#video-title-display {
+  color: #ff4444; font-size: 17px; font-weight: bold;
+  width: 92%; max-width: 860px; margin-top: 14px; padding: 0 4px;
+  font-family: 'Courier New', monospace; word-break: break-all;
+}
+#popup-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.6); z-index: 900; display: none;
+  align-items: center; justify-content: center;
+}
+#popup-box {
+  background: #f0f0f0; border: 2px outset #fff; min-width: 280px;
+  box-shadow: 4px 4px 12px rgba(0,0,0,0.5); user-select: none;
+}
+#popup-titlebar {
+  background: linear-gradient(to right, #000080, #1084d0);
+  padding: 3px 6px; display: flex; align-items: center; justify-content: space-between;
+}
+#popup-titlebar span { color: #fff; font-size: 12px; font-family: 'Courier New', monospace; }
+#popup-close-btn {
+  background: #c0c0c0; border: 1px outset #fff; color: #000;
+  font-size: 11px; width: 16px; height: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-weight: bold;
+}
+#popup-content { padding: 24px 20px 10px; font-size: 12px; font-family: 'Courier New', monospace; min-height: 70px; }
+#popup-ok-btn {
+  display: block; margin: 0 auto 14px; padding: 4px 28px;
+  background: #c0c0c0; border: 1px outset #fff; cursor: pointer; font-size: 12px;
+}
+#task-manager-overlay {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: #f0f0f0; border: 2px outset #fff; width: 380px;
+  z-index: 3000; display: none; box-shadow: 4px 4px 10px rgba(0,0,0,0.5);
+}
+#task-manager-title {
+  background: linear-gradient(to right, #000080, #1084d0);
+  padding: 3px 6px; display: flex; justify-content: space-between; align-items: center;
+}
+#task-manager-title span { color: #fff; font-size: 12px; }
+#tm-close { background: #c0c0c0; border: 1px outset #fff; cursor: pointer; padding: 0 4px; font-size: 11px; font-weight: bold; }
+#task-manager-content { padding: 12px; font-size: 11px; font-family: 'Courier New', monospace; }
+#task-manager-content table { width: 100%; border-collapse: collapse; }
+#task-manager-content th { background: #000080; color: #fff; padding: 2px 6px; text-align: left; }
+#task-manager-content td { padding: 2px 6px; border-bottom: 1px solid #ddd; }
+.tm-btn { margin-top: 8px; padding: 3px 10px; background: #c0c0c0; border: 1px outset #fff; cursor: pointer; font-size: 11px; }
+#shutdown-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: #000; z-index: 9000; display: none;
+  align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+}
+#shutdown-overlay p { color: #fff; font-size: 18px; font-family: 'Courier New', monospace; }
+#message-display {
+  position: fixed; bottom: 46px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.92); color: #ff2222; padding: 10px 20px;
+  border-radius: 3px; font-size: 13px; z-index: 8000; display: none;
+  font-family: 'Courier New', monospace; border: 1px solid #ff0000;
+  text-align: center; max-width: 500px; pointer-events: none;
+}
+#glitch-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 4000; display: none; opacity: 0;
+}
+#screamer-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 99999; display: none; background: #000;
+  align-items: center; justify-content: center;
+}
+#screamer-canvas { width: 100%; height: 100%; }
+.blood-drip {
+  position: fixed; top: -10px; width: 6px;
+  background: linear-gradient(to bottom, #8b0000 60%, #ff0000);
+  border-radius: 0 0 50% 50%; z-index: 3500; pointer-events: none;
+  transition: none;
+}
+#suspended-msg {
+  padding: 36px; text-align: center; background: #fff;
+  margin: 24px auto; max-width: 580px; border: 1px solid #e0e0e0; border-radius: 3px;
+}
+#refresh-btn {
+  margin-top: 18px; padding: 9px 22px; background: #065fd4;
+  color: #fff; border: none; border-radius: 2px; cursor: pointer; font-size: 14px;
+}
+#videos-section { padding: 0 0 20px; }
+#videos-section h3 {
+  font-size: 16px; padding: 14px 24px 10px;
+  border-bottom: 1px solid #e0e0e0; margin-bottom: 0;
+}
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <canvas id="loading-canvas" width="320" height="100"></canvas>
+  <p id="loading-text">Connecting to www.youtube.com/666</p>
+</div>
+
+<div id="taskbar">
+  <button id="start-btn">⊞ Start</button>
+  <button id="taskbar-browser" onclick="openBrowser()">🌐 Internet Explorer</button>
+  <span id="taskbar-time">12:00 AM</span>
+</div>
+
+<div id="browser-window">
+  <div id="browser-chrome">
+    <button id="browser-back-btn" onclick="browserBack()">◄ Back</button>
+    <button id="browser-refresh-btn" onclick="browserRefresh()">↺ Refresh</button>
+    <input id="browser-url-bar" type="text" value="www.youtube.com/666" readonly/>
+  </div>
+  <div id="browser-content">
+    <div id="youtube-sim"></div>
+  </div>
+</div>
+
+<div id="glitch-overlay"></div>
+<div id="message-display"></div>
+
+<div id="popup-overlay">
+  <div id="popup-box">
+    <div id="popup-titlebar">
+      <span id="popup-title-text">&nbsp;</span>
+      <button id="popup-close-btn">✕</button>
+    </div>
+    <div id="popup-content"></div>
+    <button id="popup-ok-btn">OK</button>
+  </div>
+</div>
+
+<div id="video-player-overlay">
+  <div id="video-player-container">
+    <button id="close-video-btn">✕</button>
+    <canvas id="video-canvas-main" width="860" height="484"></canvas>
+    <div id="video-controls">
+      <button id="play-pause-btn">⏸</button>
+      <div id="progress-bar-container">
+        <div id="progress-bar"></div>
+      </div>
+      <span id="video-time">0:00 / 3:00</span>
+    </div>
+  </div>
+  <div id="video-title-display"></div>
+</div>
+
+<div id="task-manager-overlay">
+  <div id="task-manager-title">
+    <span>Windows Task Manager</span>
+    <button id="tm-close" onclick="closeTaskManager()">✕</button>
+  </div>
+  <div id="task-manager-content">
+    <table>
+      <tr><th>Image Name</th><th>Status</th><th>CPU</th><th>Mem</th></tr>
+      <tr><td>iexplore.exe</td><td>Running</td><td id="tm-cpu">77%</td><td>128,664 K</td></tr>
+      <tr><td>666.exe</td><td id="tm-status" style="color:red">CANNOT STOP</td><td>100%</td><td>∞ K</td></tr>
+      <tr><td>System Idle</td><td>Running</td><td>0%</td><td>28 K</td></tr>
+    </table>
+    <button class="tm-btn" onclick="endTask()">End Task</button>
+    <button class="tm-btn" onclick="closeTaskManager()" style="margin-left:6px">Cancel</button>
+  </div>
+</div>
+
+<div id="shutdown-overlay">
+  <p id="shutdown-text">Shutting down...</p>
+</div>
+
+<div id="screamer-overlay">
+  <canvas id="screamer-canvas"></canvas>
+</div>
+
+<script>
+// ======================================================
+// AUDIO
+// ======================================================
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, dur, type='sine', vol=0.3, detune=0, delay=0) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type = type; o.frequency.value = freq; o.detune.value = detune;
+  const t = audioCtx.currentTime + delay;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur);
+}
+
+function playNoise(dur, vol=0.2, delay=0) {
+  if (!audioCtx) return;
+  const sr = audioCtx.sampleRate;
+  const buf = audioCtx.createBuffer(1, sr * dur, sr);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  const g = audioCtx.createGain();
+  src.buffer = buf; src.connect(g); g.connect(audioCtx.destination);
+  g.gain.value = vol;
+  src.start(audioCtx.currentTime + delay);
+}
+
+function playLowDrone() {
+  if (!audioCtx) return;
+  playTone(40, 4, 'sawtooth', 0.12);
+  playTone(60, 3, 'square', 0.07, 15);
+  playTone(25, 5, 'sine', 0.15);
+}
+
+function playScream() {
+  if (!audioCtx) return;
+  for (let i = 0; i < 8; i++) {
+    const delay = i * 0.06;
+    playTone(300 + Math.random()*600, 0.6, 'sawtooth', 0.5, Math.random()*200-100, delay);
+    playNoise(0.4, 0.4, delay);
+  }
+}
+
+function playHeavyScream() {
+  if (!audioCtx) return;
+  playNoise(3, 0.9);
+  for (let i = 0; i < 20; i++) {
+    playTone(50 + Math.random()*800, 0.8, 'sawtooth', 0.6, Math.random()*400-200, i*0.05);
+  }
+}
+
+function playVideoAmbient() {
+  if (!audioCtx) return;
+  playTone(55, 3, 'sawtooth', 0.1);
+  playTone(80, 2, 'square', 0.06, 30);
+  playNoise(1, 0.08);
+}
+
+let droneInterval = null;
+function startDroneLoop() {
+  if (droneInterval) return;
+  droneInterval = setInterval(() => { if (audioCtx) playLowDrone(); }, 3500);
+}
+
+// ======================================================
+// STATE
+// ======================================================
+let gamePhase = 0;
+let refreshCount = 0;
+let corruption = 0;
+let currentVideo = -1;
+let videoPlaying = false;
+let videoPaused = false;
+let videoTimeSec = 0;
+let videoTotalSec = 200;
+let videoAnimId = null;
+let videoTimerHandle = null;
+let lastVideoOpened = false;
+let popupShown = false;
+let endingStarted = false;
+let escapeAttempts = 0;
+let thumbAnimIds = [];
+
+// ======================================================
+// GLITCHED VIDEO NAMES (unreadable, unicode chaos)
+// ======================================================
+const glitchedNames = [
+  "▒╬Ø║▓░Ð╫╪╚▓╬Ø▒░║Ð╪╫╚▓╬Ø▒░║",
+  "Ж̷̵͓̺̙Ю̶̢̛̠̤̘̰̩Д̵̮̳Ъ̸̡̞̹̯Ξ̴̛̬̹̤̯̟",
+  "⚠̶̨̰͚̖̣̳͍̞̬̯̥̯̮̼ͅͅ▓̷̢̠̘̣̫̩ █̵̢̢̨̛̜͇̰̻̮̼",
+  "NULL://̴̸̡͕͘͟͠0̷̢̧̛̰̜͈̻̼̘̬͕͝0̸̺̻͖̤͝0̷̡̰̩̙̱͟͜͡ͅ",
+  "▐▌▐▌╫╫░▓██░▓╫╫▐▌▐▌░▓██░▓╫╫"
+];
+
+const videoMetas = [
+  "6,660,666 views • 6:66",
+  "∞ views • ??:??",
+  "13,131,313 views • 3:33",
+  "999,999,999 views • 6:06",
+  "6 views • 6:06"
+];
+
+// ======================================================
+// CORRUPTION STYLE
+// ======================================================
+function cs() {
+  if (corruption === 0) return { bg:'#f9f9f9', hdr:'#fff', txt:'#030303', sub:'#606060', border:'#e0e0e0', logo:'#ff0000', logoS:'#282828', accent:'#065fd4' };
+  if (corruption === 1) return { bg:'#f0e0e0', hdr:'#fff5f5', txt:'#200000', sub:'#804040', border:'#ddc0c0', logo:'#cc0000', logoS:'#300000', accent:'#a04040' };
+  if (corruption === 2) return { bg:'#c08080', hdr:'#d09090', txt:'#3d0000', sub:'#bb5555', border:'#aa4444', logo:'#880000', logoS:'#440000', accent:'#660000' };
+  if (corruption === 3) return { bg:'#6b0000', hdr:'#550000', txt:'#ff8888', sub:'#ff5555', border:'#880000', logo:'#ff0000', logoS:'#ff8888', accent:'#cc0000' };
+  return { bg:'#0a0000', hdr:'#150000', txt:'#ff0000', sub:'#cc2222', border:'#440000', logo:'#ff0000', logoS:'#ff5555', accent:'#ff0000' };
+}
+
+// ======================================================
+// YOUTUBE RENDER
+// ======================================================
+const ytSim = document.getElementById('youtube-sim');
+
+function renderYT() {
+  const s = cs();
+  ytSim.style.background = s.bg;
+  ytSim.style.filter = corruption >= 3
+    ? `hue-rotate(${corruption*8}deg) saturate(${2+corruption*0.5}) contrast(${1.2+corruption*0.1})`
+    : '';
+
+  const logoExtra = corruption > 1 ? (corruption > 3 ? ' ⛧' : ' ☩') : '';
+  const bannerExtra = corruption >= 4 ? '⛧ ' : '';
+
+  const suspendMsg =
+    corruption === 0 ? 'This account has been suspended.' :
+    corruption === 1 ? 'This account has been... suspended.' :
+    corruption === 2 ? 'This channel cannot be terminated.' :
+    corruption === 3 ? 'YOU CANNOT CLOSE THIS CHANNEL.' :
+    '⛧ THE GATE IS OPEN ⛧';
+
+  const suspendSub =
+    corruption === 0 ? 'Due to multiple or severe violations of YouTube\'s Terms of Service, this channel has been terminated.' :
+    corruption === 1 ? 'Due to... multiple violations... this channel... persists.' :
+    corruption === 2 ? 'Something is watching through your screen. Stop refreshing.' :
+    corruption === 3 ? 'IT CANNOT BE STOPPED. YOUR SCREEN IS A WINDOW. IT SEES YOU NOW.' :
+    'THERE IS NO GOING BACK. THE VIDEOS AWAIT. CLICK BELOW.';
+
+  const btnLabel =
+    corruption === 0 ? 'Refresh' :
+    corruption === 1 ? 'Refresh...' :
+    corruption === 2 ? 'Please stop' :
+    corruption === 3 ? 'DO NOT REFRESH AGAIN' : '';
+
+  const btnOrEnter = corruption >= 4
+    ? `<button onclick="enterVideos()" style="margin-top:18px;background:#660000;color:#ff0000;border:2px solid #ff0000;padding:12px 36px;font-size:16px;cursor:pointer;font-weight:bold;letter-spacing:3px;font-family:'Courier New',monospace">ENTER THE CHANNEL</button>`
+    : `<button id="refresh-btn" onclick="handleRefresh()" style="background:${s.accent};color:#fff;border:none;border-radius:2px;cursor:pointer;font-size:14px;padding:9px 22px;margin-top:18px">${btnLabel}</button>`;
+
+  ytSim.innerHTML = `
+    <div id="yt-header" style="background:${s.hdr};border-bottom-color:${s.border}">
+      <div id="yt-logo" style="color:${s.logo}">You<span style="color:${s.logoS}">Tube</span>${logoExtra}</div>
+      <div class="yt-search-bar">
+        <input class="yt-search-input" type="text" value="${corruption>=3?'666':''}" style="background:${s.hdr};color:${s.txt};border-color:${s.border}" readonly/>
+        <button class="yt-search-btn" style="background:${s.hdr};border-color:${s.border};color:${s.txt}">🔍</button>
+      </div>
+    </div>
+    <div id="channel-banner" style="background:linear-gradient(135deg,${corruption>=3?'#3d0000,#660000':'#1a1a1a,#333'})">
+      <canvas id="banner-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;opacity:${corruption>=2?1:0}"></canvas>
+      <div style="color:${corruption>=3?'#ff2222':'#fff'};font-size:${24+corruption*4}px;font-weight:900;z-index:2;position:relative;text-shadow:${corruption>=3?'0 0 20px #ff0000':'none'}">${bannerExtra}666${corruption>=4?' ⛧':''}</div>
+    </div>
+    <div id="channel-info" style="background:${s.hdr};border-bottom-color:${s.border}">
+      <div id="channel-avatar" style="background:${corruption>=3?'#660000':'#ff0000'};color:#fff">${corruption>=4?'⛧':'6'}</div>
+      <div>
+        <h2 style="font-size:19px;color:${s.txt}">${corruption>=3?'⛧ THE BEAST CHANNEL — ':''}666</h2>
+        <p style="font-size:12px;color:${s.sub};margin-top:3px">${corruption>=4?'∞':'0'} subscribers • ${corruption>=4?'666':'0'} videos${corruption>=2?' • Something watches through this page':''}</p>
+      </div>
+    </div>
+    <div id="suspended-msg" style="background:${s.hdr};border-color:${s.border}">
+      <h2 style="color:${corruption>=1?'#cc0000':'#909090'};font-size:22px">${suspendMsg}</h2>
+      <p style="color:${s.sub};font-size:13px;margin-top:8px;line-height:1.6">${suspendSub}</p>
+      ${btnOrEnter}
+    </div>
+  `;
+
+  if (corruption >= 2) {
+    const bc = document.getElementById('banner-canvas');
+    if (bc) { bc.width = bc.offsetWidth||900; bc.height = 180; animBanner(bc); }
+  }
+}
+
+let bannerAnimId = null;
+function animBanner(canvas) {
+  if (bannerAnimId) cancelAnimationFrame(bannerAnimId);
+  const ctx = canvas.getContext('2d');
+  let t = 0;
+  const draw = () => {
+    const W = canvas.width, H = canvas.height;
+    ctx.fillStyle = '#0a0000'; ctx.fillRect(0,0,W,H);
+    for (let i = 0; i < 25; i++) {
+      const x = ((i*73 + t*60) % (W+20)) - 10;
+      const h = 30 + Math.sin(t+i)*15;
+      const grad = ctx.createLinearGradient(x,0,x,h);
+      grad.addColorStop(0,'rgba(180,0,0,0)');
+      grad.addColorStop(0.5,`rgba(${150+i*3},0,0,0.9)`);
+      grad.addColorStop(1,'rgba(80,0,0,0.3)');
+      ctx.fillStyle = grad; ctx.fillRect(x,0,3,h);
+    }
+    t += 0.04;
+    bannerAnimId = requestAnimationFrame(draw);
+  };
+  draw();
+}
+
+// ======================================================
+// REFRESH
+// ======================================================
+function handleRefresh() {
+  ensureAudio();
+  refreshCount++;
+  corruption = Math.min(refreshCount, 4);
+  
+  if (refreshCount <= 2) { playTone(440, 0.2, 'sine', 0.18); }
+  else if (refreshCount === 3) { playTone(180, 0.6, 'sawtooth', 0.28, 30); playNoise(0.4,0.15); }
+  else { playScream(); startDroneLoop(); addBloodDrips(); }
+
+  if (refreshCount >= 3) triggerGlitch(refreshCount >= 4);
+
+  setTimeout(() => {
+    renderYT();
+    if (corruption >= 3) startCorruptAnim();
+  }, 200);
+}
+
+let corruptAnimRunning = false;
+function startCorruptAnim() {
+  if (corruptAnimRunning) return; corruptAnimRunning = true;
+  let t = 0;
+  const tick = () => {
+    if (!corruptAnimRunning) return;
+    t += 0.04;
+    ytSim.style.filter = `hue-rotate(${Math.sin(t)*20}deg) saturate(${2.5+Math.sin(t*0.8)*0.8}) contrast(${1.3+Math.sin(t*1.5)*0.15})`;
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function triggerGlitch(heavy) {
+  const go = document.getElementById('glitch-overlay');
+  go.style.display = 'block';
+  go.style.background = `repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,0,0,0.04) 2px,rgba(255,0,0,0.04) 4px)`;
+  let n = 0;
+  const lim = heavy ? 20 : 10;
+  const iv = setInterval(() => {
+    go.style.opacity = Math.random() > 0.5 ? '1' : '0';
+    if (heavy) {
+      ytSim.style.transform = `translateX(${(Math.random()-.5)*16}px) skewX(${(Math.random()-.5)*3}deg)`;
+      document.getElementById('browser-window').style.filter = Math.random()>0.5 ? `brightness(${0.3+Math.random()*0.7})` : '';
+    }
+    if (++n >= lim) {
+      clearInterval(iv);
+      go.style.opacity = '0';
+      ytSim.style.transform = '';
+      document.getElementById('browser-window').style.filter = '';
+    }
+  }, 60);
+}
+
+function addBloodDrips() {
+  for (let i = 0; i < 12; i++) {
+    setTimeout(() => {
+      const d = document.createElement('div');
+      d.className = 'blood-drip';
+      d.style.left = (5 + Math.random() * 90) + '%';
+      d.style.width = (4 + Math.random() * 6) + 'px';
+      const targetH = 60 + Math.random() * 200;
+      d.style.height = '0px';
+      d.style.top = '0px';
+      document.body.appendChild(d);
+      let h = 0;
+      const grow = setInterval(() => {
+        h = Math.min(h + 4 + Math.random() * 6, targetH);
+        d.style.height = h + 'px';
+        if (h >= targetH) clearInterval(grow);
+      }, 30);
+    }, i * 250 + Math.random() * 150);
+  }
+}
+
+function enterVideos() {
+  ensureAudio();
+  playScream();
+  gamePhase = 4;
+  corruption = 4;
+  startDroneLoop();
+  renderVideosPage();
+}
+
+// ======================================================
+// VIDEOS PAGE
+// ======================================================
+function renderVideosPage() {
+  const bc = document.getElementById('browser-content');
+  bc.style.overflowY = 'auto';
+
+  let cards = '';
+  glitchedNames.forEach((name, i) => {
+    cards += `
+      <div class="video-card" onclick="openVideo(${i})" style="border-color:#330000;background:#150000">
+        <div class="video-thumb" id="vt-${i}">
+          <span class="play-icon">▶</span>
+        </div>
+        <div class="video-info" style="background:#150000">
+          <div class="video-title" style="color:#ff5555;font-family:'Courier New',monospace;font-size:11px">${name}</div>
+          <div class="video-meta" style="color:#993333">${videoMetas[i]}</div>
+        </div>
+      </div>`;
+  });
+
+  ytSim.innerHTML = `
+    <div id="yt-header" style="background:#150000;border-bottom:1px solid #440000">
+      <div id="yt-logo" style="color:#ff0000">You<span style="color:#ff4444">Tube</span> ⛧</div>
+      <div class="yt-search-bar">
+        <input class="yt-search-input" type="text" value="666" style="background:#0a0000;color:#ff0000;border-color:#440000" readonly/>
+        <button class="yt-search-btn" style="background:#220000;border-color:#440000;color:#ff0000">🔍</button>
+      </div>
+    </div>
+    <div id="channel-banner" style="background:linear-gradient(135deg,#1a0000,#3d0000);height:160px;position:relative;overflow:hidden">
+      <canvas id="banner-canvas2" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0"></canvas>
+      <div style="color:#ff0000;font-size:36px;font-weight:900;z-index:2;position:relative;text-shadow:0 0 30px #ff0000,0 0 60px #ff0000;letter-spacing:6px">⛧ 666 ⛧</div>
+    </div>
+    <div id="channel-info" style="background:#150000;border-bottom:1px solid #440000">
+      <div id="channel-avatar" style="background:#660000;color:#ff0000;font-size:36px;width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center">⛧</div>
+      <div>
+        <h2 style="color:#ff0000;font-size:19px;text-shadow:0 0 10px #ff0000">THE BEAST CHANNEL — 666</h2>
+        <p style="color:#cc3333;font-size:12px;margin-top:3px">∞ subscribers • 666 videos • Uploaded from the depths</p>
+      </div>
+    </div>
+    <div id="videos-section">
+      <h3 style="color:#ff0000;border-bottom-color:#440000;background:#0a0000;text-shadow:0 0 8px #ff0000;font-family:'Courier New',monospace">▓ VIDEOS ▓</h3>
+      <div class="video-grid" style="background:#0a0000">${cards}</div>
+    </div>
+  `;
+
+  const bc2 = document.getElementById('banner-canvas2');
+  if (bc2) { bc2.width = bc2.offsetWidth||900; bc2.height = 160; animBanner(bc2); }
+
+  setTimeout(() => {
+    glitchedNames.forEach((_, i) => {
+      const el = document.getElementById('vt-' + i);
+      if (el) {
+        const c = document.createElement('canvas');
+        c.width = 200; c.height = 120;
+        c.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1';
+        el.insertBefore(c, el.firstChild);
+        const id = animateThumbnail(c, i);
+        thumbAnimIds.push(id);
+      }
+    });
+  }, 80);
+}
+
+// ======================================================
+// THUMBNAIL ANIMATORS — GORE / HORROR VISUALS
+// ======================================================
+function animateThumbnail(canvas, idx) {
+  const ctx = canvas.getContext('2d');
+  const W = 200, H = 120;
+  let t = 0;
+  let reqId;
+
+  const draws = [
+    // 0: dissection table
+    (t) => {
+      ctx.fillStyle = '#0a0000'; ctx.fillRect(0,0,W,H);
+      // Table
+      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(20,60,160,40);
+      // Body outline
+      ctx.strokeStyle = `rgba(${150+Math.sin(t)*30},50,50,0.9)`; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.ellipse(100,70,55,20,0,0,Math.PI*2); ctx.stroke();
+      // Ribs
+      for(let r=0;r<5;r++){
+        const rx=55+r*18, ry=62+Math.sin(t*2+r)*2;
+        ctx.strokeStyle=`rgba(220,200,180,${0.6+Math.sin(t+r)*0.2})`; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx-5,ry+16); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(rx+2,ry); ctx.lineTo(rx+7,ry+16); ctx.stroke();
+      }
+      // Blood pools
+      ctx.fillStyle=`rgba(${120+Math.sin(t)*20},0,0,0.85)`;
+      ctx.beginPath(); ctx.ellipse(75,88,30+Math.sin(t*0.5)*4,10,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(125,90,22,8,0,0,Math.PI*2); ctx.fill();
+      // Drips off table
+      for(let d=0;d<4;d++){
+        const dx=40+d*35, dh=5+Math.sin(t*2+d)*8;
+        ctx.fillStyle='rgba(140,0,0,0.9)'; ctx.fillRect(dx,100,3,dh);
+        ctx.beginPath(); ctx.arc(dx+1,100+dh,3,0,Math.PI*2); ctx.fill();
+      }
+      // ERROR text
+      if(Math.sin(t*4)>0.7){
+        ctx.fillStyle=`rgba(255,0,0,${Math.abs(Math.sin(t*4))})`;
+        ctx.font='bold 11px monospace'; ctx.textAlign='center';
+        ctx.fillText('ERROR',100,15); ctx.textAlign='left';
+      }
+    },
+    // 1: skull dissolving in acid
+    (t) => {
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      // Acid pool
+      const acid = ctx.createRadialGradient(100,H-20,0,100,H-20,80);
+      acid.addColorStop(0,`rgba(80,${180+Math.sin(t*3)*40},0,0.7)`);
+      acid.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=acid; ctx.fillRect(0,0,W,H);
+      // Skull
+      const melt=Math.sin(t*0.4+0.5)*0.5+0.5;
+      ctx.fillStyle=`rgba(${220-melt*60},${210-melt*80},${190-melt*100},0.9)`;
+      ctx.beginPath(); ctx.ellipse(100,50-melt*5,30,35-melt*10,0,0,Math.PI*2); ctx.fill();
+      // Eye sockets
+      ctx.fillStyle='#000';
+      ctx.beginPath(); ctx.ellipse(87,40,8,8+melt*6,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(113,40,8,8+melt*6,0,0,Math.PI*2); ctx.fill();
+      // Drips
+      for(let i=0;i<6;i++){
+        const dx=72+i*9, dy=70+melt*20+Math.sin(t+i)*5;
+        ctx.fillStyle=`rgba(${200-i*10},${160-i*15},${140-i*15},${0.7+melt*0.2})`;
+        ctx.fillRect(dx,65,4,dy-65);
+        ctx.beginPath(); ctx.arc(dx+2,dy,3+melt*2,0,Math.PI*2); ctx.fill();
+      }
+      // STATIC overlay
+      for(let s=0;s<30;s++){
+        ctx.fillStyle=`rgba(0,200,0,${Math.random()*0.15})`;
+        ctx.fillRect(Math.random()*W,Math.random()*H,Math.random()*40,1);
+      }
+      ctx.fillStyle=`rgba(0,${180+Math.sin(t*8)*40},0,0.5)`;
+      ctx.font='10px monospace'; ctx.textAlign='center';
+      ctx.fillText('REC ●',160,12); ctx.textAlign='left';
+    },
+    // 2: room with something on the wall
+    (t) => {
+      ctx.fillStyle='#080004'; ctx.fillRect(0,0,W,H);
+      // Room walls perspective
+      ctx.strokeStyle='rgba(40,10,10,0.9)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(60,40); ctx.lineTo(140,40); ctx.lineTo(W,0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,H); ctx.lineTo(60,75); ctx.lineTo(140,75); ctx.lineTo(W,H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(60,40); ctx.lineTo(60,75); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(140,40); ctx.lineTo(140,75); ctx.stroke();
+      // Something on the wall — writing
+      ctx.fillStyle=`rgba(${140+Math.sin(t)*30},0,0,${0.7+Math.sin(t*3)*0.2})`;
+      ctx.font='bold 9px monospace'; ctx.textAlign='center';
+      ctx.fillText('HELP ME',100,55);
+      ctx.fillText('HELP ME',100,63);
+      ctx.textAlign='left';
+      // Flickering light
+      ctx.fillStyle=`rgba(255,${180+Math.sin(t*7)*60},${50+Math.sin(t*5)*30},${0.05+Math.abs(Math.sin(t*6))*0.1})`;
+      ctx.fillRect(0,0,W,H);
+      // Figure in doorway
+      const fx=100, fy=57;
+      ctx.fillStyle=`rgba(0,0,0,${0.8+Math.sin(t*0.3)*0.15})`;
+      ctx.beginPath(); ctx.ellipse(fx,fy-18,9,12,0,0,Math.PI*2); ctx.fill();
+      ctx.fillRect(fx-7,fy-7,14,22);
+      // Eye glow
+      ctx.fillStyle=`rgba(255,0,0,${0.6+Math.sin(t*4)*0.4})`;
+      ctx.beginPath(); ctx.arc(fx-3,fy-20,2,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(fx+3,fy-20,2,0,Math.PI*2); ctx.fill();
+    },
+    // 3: hands reaching through screen
+    (t) => {
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      // Screen glow
+      ctx.fillStyle=`rgba(20,0,0,${0.3+Math.sin(t*2)*0.1})`; ctx.fillRect(0,0,W,H);
+      // Multiple hands from bottom
+      for(let h=0;h<3;h++){
+        const hx=40+h*60, hy=H-(30+Math.sin(t*1.5+h)*20);
+        // Arm
+        ctx.fillStyle=`rgba(${120+h*15},${45+h*8},${40+h*5},0.95)`;
+        ctx.fillRect(hx-10,hy,20,H-hy+5);
+        // Palm
+        ctx.beginPath(); ctx.ellipse(hx,hy,16,12,0,0,Math.PI*2); ctx.fill();
+        // Fingers
+        const fa=[-0.3,-0.1,0.1,0.3];
+        fa.forEach((a,fi)=>{
+          ctx.save(); ctx.translate(hx-12+fi*8,hy-2); ctx.rotate(a-Math.PI/2);
+          ctx.fillRect(-3,0,6,20+Math.sin(t*2+fi)*4);
+          // Nail
+          ctx.fillStyle='rgba(20,10,10,0.9)'; ctx.fillRect(-3,0,6,7);
+          ctx.restore();
+          ctx.fillStyle=`rgba(${120+h*15},${45+h*8},${40+h*5},0.95)`;
+        });
+        // Blood drips from fingers
+        ctx.fillStyle=`rgba(${150+h*10},0,0,0.9)`;
+        ctx.beginPath(); ctx.arc(hx,hy+12,5+Math.sin(t*3+h)*2,0,Math.PI*2); ctx.fill();
+      }
+      // Crack lines in screen
+      ctx.strokeStyle='rgba(255,0,0,0.5)'; ctx.lineWidth=1;
+      for(let c=0;c<5;c++){
+        ctx.beginPath();
+        ctx.moveTo(80+c*8,0);
+        ctx.lineTo(70+c*12+Math.sin(t+c)*10,H);
+        ctx.stroke();
+      }
+    },
+    // 4: final — darkness with face emerging
+    (t) => {
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      const pulse=Math.abs(Math.sin(t*2.5));
+      // Pulsing red glow center
+      const g=ctx.createRadialGradient(100,60,0,100,60,80);
+      g.addColorStop(0,`rgba(${80+pulse*60},0,0,${pulse*0.5})`);
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+      // Face — barely visible
+      const alpha=0.3+pulse*0.4;
+      ctx.fillStyle=`rgba(${140+pulse*40},${60+pulse*20},${50+pulse*20},${alpha})`;
+      ctx.beginPath(); ctx.ellipse(100,60,35,42,0,0,Math.PI*2); ctx.fill();
+      // Eyes — glowing red
+      ctx.fillStyle=`rgba(255,0,0,${0.7+pulse*0.3})`;
+      ctx.beginPath(); ctx.ellipse(86,52,10,6,0.2,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(114,52,10,6,-0.2,0,Math.PI*2); ctx.fill();
+      // Pupils
+      ctx.fillStyle='#000';
+      ctx.beginPath(); ctx.arc(86,52,4,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(114,52,4,0,Math.PI*2); ctx.fill();
+      // Mouth — sewn shut
+      ctx.strokeStyle=`rgba(${60+pulse*40},0,0,0.9)`; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(76,72); ctx.lineTo(124,72); ctx.stroke();
+      for(let s=0;s<5;s++){
+        const sx=82+s*9;
+        ctx.strokeStyle=`rgba(180,${50+s*10},0,0.8)`; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.moveTo(sx,68); ctx.lineTo(sx+2,76); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx+4,68); ctx.lineTo(sx+2,76); ctx.stroke();
+      }
+      // Static
+      for(let s=0;s<40;s++){
+        ctx.fillStyle=`rgba(${Math.random()>0.5?255:0},0,0,${Math.random()*0.3})`;
+        ctx.fillRect(Math.random()*W,Math.random()*H,Math.random()*6+1,1);
+      }
+      ctx.fillStyle=`rgba(255,0,0,${pulse*0.8})`;
+      ctx.font='bold 10px monospace'; ctx.textAlign='center';
+      ctx.fillText('DO NOT CLICK',100,108);
+      ctx.fillText('DO NOT CLICK',100,108);
+      ctx.textAlign='left';
+    }
+  ];
+
+  const draw = () => {
+    t += 0.04;
+    draws[idx](t);
+    reqId = requestAnimationFrame(draw);
+  };
+  draw();
+  return reqId;
+}
+
+// ======================================================
+// VIDEO PLAYER
+// ======================================================
+function openVideo(idx) {
+  ensureAudio();
+
+  if (idx === 4 && !popupShown) {
+    showPopup(idx);
+    return;
+  }
+
+  currentVideo = idx;
+  if (idx === 4) lastVideoOpened = true;
+
+  stopVideo();
+  videoPaused = false;
+  videoTimeSec = 0;
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('play-pause-btn').textContent = '⏸';
+
+  const overlay = document.getElementById('video-player-overlay');
+  overlay.style.display = 'flex';
+
+  const titEl = document.getElementById('video-title-display');
+  titEl.textContent = glitchedNames[idx];
+  titEl.style.color = '#ff4444';
+
+  videoTotalSec = 60 + idx * 40;
+  playVideoAmbient();
+
+  const canvas = document.getElementById('video-canvas-main');
+  const ctx = canvas.getContext('2d');
+
+  startVideoAnim(ctx, idx);
+  startVideoTimer();
+
+  if (idx === 4) {
+    setTimeout(() => triggerEnding(), 8000);
+  }
+}
+
+function stopVideo() {
+  if (videoAnimId) { cancelAnimationFrame(videoAnimId); videoAnimId = null; }
+  if (videoTimerHandle) { clearInterval(videoTimerHandle); videoTimerHandle = null; }
+  videoTimeSec = 0;
+}
+
+// ======================================================
+// VIDEO RENDERERS — GORE / HORROR / ERRORS
+// ======================================================
+function startVideoAnim(ctx, idx) {
+  const W = 860, H = 484;
+  let t = 0;
+  let startMs = performance.now();
+
+  const renders = [
+    // VIDEO 0: Dissection / Operating Room
+    (t) => {
+      ctx.fillStyle='#050202'; ctx.fillRect(0,0,W,H);
+      // Flickering surgical light
+      const flicker=0.6+Math.sin(t*17)*0.15+Math.random()*0.1;
+      ctx.fillStyle=`rgba(200,180,140,${flicker*0.08})`; ctx.fillRect(180,0,500,H);
+      // Table
+      ctx.fillStyle='#1c1c1c'; ctx.fillRect(100,280,660,80);
+      ctx.fillStyle='#2a2a2a'; ctx.fillRect(100,275,660,10);
+      // Body on table
+      ctx.fillStyle=`rgba(${180+Math.sin(t)*10},${100+Math.sin(t*0.5)*8},${90},0.95)`;
+      ctx.beginPath(); ctx.ellipse(430,285,200,40,0,0,Math.PI*2); ctx.fill();
+      // Open chest cavity
+      ctx.fillStyle='rgba(80,0,0,0.95)';
+      ctx.beginPath(); ctx.ellipse(430,282,80,28,0,0,Math.PI*2); ctx.fill();
+      // Organs — heart beating
+      const beat=Math.abs(Math.sin(t*4))*0.3;
+      ctx.fillStyle=`rgba(${180+beat*40},${20+beat*10},${20+beat*10},0.95)`;
+      ctx.beginPath(); ctx.ellipse(415,278,22+beat*5,18+beat*4,0,0,Math.PI*2); ctx.fill();
+      // Other organs
+      ctx.fillStyle='rgba(140,60,30,0.9)';
+      ctx.beginPath(); ctx.ellipse(455,282,28,16,0.3,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(100,20,50,0.8)';
+      ctx.beginPath(); ctx.ellipse(395,286,15,12,0,0,Math.PI*2); ctx.fill();
+      // Blood spreading
+      for(let b=0;b<8;b++){
+        const bx=310+b*30, by=285+Math.sin(t*0.3+b)*3;
+        const gr=ctx.createRadialGradient(bx,by+20,0,bx,by+20,30+b*5);
+        gr.addColorStop(0,`rgba(${120+b*5},0,0,0.8)`);
+        gr.addColorStop(1,'rgba(60,0,0,0)');
+        ctx.fillStyle=gr; ctx.fillRect(bx-35,by,70,40);
+      }
+      // Drips off table
+      for(let d=0;d<10;d++){
+        const dx=150+d*56, ph=(t*0.8+d*0.6)%(2);
+        const dh=Math.max(0,Math.sin(ph*Math.PI)*80);
+        ctx.fillStyle='rgba(150,0,0,0.9)'; ctx.fillRect(dx,355,3,dh);
+        if(dh>60){ ctx.beginPath(); ctx.arc(dx+1,355+dh,5,0,Math.PI*2); ctx.fill(); }
+      }
+      // Ribs — exposed
+      for(let r=0;r<12;r++){
+        const rx=360+r*13, ry=260;
+        ctx.strokeStyle=`rgba(220,200,170,${0.7+Math.sin(t+r)*0.2})`; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(rx,ry); ctx.bezierCurveTo(rx-8,ry+15,rx-12,ry+28,rx-8,ry+40); ctx.stroke();
+      }
+      // ERROR / DISTORTION overlay
+      if(Math.random()>0.75){
+        const ly=Math.random()*H;
+        ctx.fillStyle=`rgba(255,0,0,${Math.random()*0.4})`;
+        ctx.fillRect(0,ly,W,3+Math.random()*8);
+        // Chromatic aberration shift
+        ctx.globalCompositeOperation='screen';
+        ctx.fillStyle=`rgba(0,0,255,0.08)`;
+        ctx.fillRect(Math.random()*10,0,W,H);
+        ctx.globalCompositeOperation='source-over';
+      }
+      // RECORDING indicator
+      ctx.fillStyle=`rgba(255,0,0,${0.7+Math.sin(t*6)*0.3})`;
+      ctx.beginPath(); ctx.arc(30,30,8,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.font='14px monospace';
+      ctx.fillText('REC  00:'+(String(Math.floor(t%60)).padStart(2,'0')),48,36);
+      // Camera #
+      ctx.fillText('CAM 4 / OR-B',W-160,H-20);
+      // Occasional static frame
+      if(Math.random()>0.92){
+        for(let s=0;s<200;s++){
+          ctx.fillStyle=`rgba(${Math.random()*255},0,0,${Math.random()*0.6})`;
+          ctx.fillRect(Math.random()*W,Math.random()*H,Math.random()*20,Math.random()*4);
+        }
+      }
+    },
+
+    // VIDEO 1: Acid/Decay vat — found footage
+    (t) => {
+      ctx.fillStyle='#000804'; ctx.fillRect(0,0,W,H);
+      // Night-vision green tint
+      ctx.fillStyle=`rgba(0,${30+Math.sin(t)*8},0,0.2)`; ctx.fillRect(0,0,W,H);
+      // Vat
+      ctx.fillStyle='#0a0a0a'; ctx.fillRect(150,200,560,220);
+      ctx.strokeStyle='rgba(40,60,40,0.9)'; ctx.lineWidth=4;
+      ctx.strokeRect(150,200,560,220);
+      // Acid surface
+      const acidCol=`rgba(60,${160+Math.sin(t*3)*30},20,0.7)`;
+      ctx.fillStyle=acidCol;
+      ctx.fillRect(155,205,550,20);
+      // Bubbles
+      for(let b=0;b<15;b++){
+        const bx=180+b*35, by=200+Math.sin(t*2+b)*5;
+        ctx.fillStyle=`rgba(80,${180+Math.sin(t*5+b)*40},30,0.5)`;
+        ctx.beginPath(); ctx.arc(bx,by,3+Math.sin(t*3+b)*2,0,Math.PI*2); ctx.fill();
+      }
+      // Something dissolving in acid
+      const dissolve=Math.sin(t*0.2+0.5)*0.5+0.5;
+      ctx.fillStyle=`rgba(${180-dissolve*80},${100-dissolve*60},${90-dissolve*60},${0.9-dissolve*0.4})`;
+      ctx.beginPath(); ctx.ellipse(430,280,130-dissolve*50,60-dissolve*30,0,0,Math.PI*2); ctx.fill();
+      // Bones showing through
+      for(let bone=0;bone<4;bone++){
+        ctx.strokeStyle=`rgba(220,200,170,${dissolve*0.8})`; ctx.lineWidth=3;
+        ctx.beginPath();
+        ctx.moveTo(330+bone*40,260);
+        ctx.bezierCurveTo(320+bone*40,290,340+bone*40,310,330+bone*40,330);
+        ctx.stroke();
+      }
+      // Acid eating at edges
+      for(let e=0;e<8;e++){
+        ctx.fillStyle=`rgba(80,${180+Math.sin(t*4+e)*30},20,${0.3+Math.sin(t*2+e)*0.2})`;
+        ctx.beginPath();
+        ctx.arc(300+e*26,310+Math.sin(t+e)*15,8+Math.sin(t*3+e)*4,0,Math.PI*2);
+        ctx.fill();
+      }
+      // Noise scan lines
+      for(let y=0;y<H;y+=3){
+        if(Math.random()>0.8){
+          ctx.fillStyle=`rgba(0,${Math.random()*120},0,${Math.random()*0.3})`;
+          ctx.fillRect(0,y,W,2);
+        }
+      }
+      // Timestamp green
+      ctx.fillStyle=`rgba(0,${200+Math.sin(t*8)*40},0,0.9)`;
+      ctx.font='bold 14px monospace';
+      ctx.fillText(`⬤ REC  ${String(Math.floor(t/60)).padStart(2,'0')}:${String(Math.floor(t%60)).padStart(2,'0')}`,20,H-20);
+      ctx.fillText('STORAGE B / SUBLEVEL 3',W-280,H-20);
+    },
+
+    // VIDEO 2: Faces — Multiple corrupted faces
+    (t) => {
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      // Heavy static
+      for(let y=0;y<H;y+=2){
+        const r=Math.random();
+        if(r>0.6){
+          ctx.fillStyle=`rgba(${Math.random()*100},0,0,${Math.random()*0.5})`;
+          ctx.fillRect(0,y,Math.random()*W,2);
+        }
+      }
+      // Three melting faces
+      for(let fi=0;fi<3;fi++){
+        const fx=140+fi*200, fy=160;
+        const melt=Math.sin(t*0.6+fi)*0.5+0.5;
+        // Face
+        ctx.fillStyle=`rgba(${200-melt*60-fi*15},${110-melt*40},${90-melt*30},0.9)`;
+        ctx.beginPath(); ctx.ellipse(fx,fy,60+melt*10,75-melt*15,0,0,Math.PI*2); ctx.fill();
+        // Eyes — one normal, one wrong
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.ellipse(fx-20,fy-20,14,10+melt*6,0,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(fx+20,fy-20,14,10+melt*6,0,0,Math.PI*2); ctx.fill();
+        // Iris
+        ctx.fillStyle=fi===0?'#8b0000':fi===1?'rgba(255,200,0,0.9)':'#000';
+        ctx.beginPath(); ctx.arc(fx-20,fy-20,8,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(fx+20+Math.sin(t+fi)*3,fy-20,8,0,Math.PI*2); ctx.fill();
+        // Pupils
+        ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.arc(fx-20,fy-20,4+melt*2,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(fx+20+Math.sin(t+fi)*3,fy-20,4+melt*2,0,Math.PI*2); ctx.fill();
+        // Mouth — screaming
+        ctx.fillStyle='rgba(20,0,0,0.95)';
+        ctx.beginPath();
+        ctx.ellipse(fx,fy+25+melt*15,20+melt*10,15+melt*20,0,0,Math.PI*2);
+        ctx.fill();
+        // Teeth in mouth
+        ctx.fillStyle='rgba(220,210,190,0.9)';
+        for(let tooth=0;tooth<5;tooth++){
+          ctx.fillRect(fx-18+tooth*9,fy+20+melt*10,7,8+melt*4);
+          ctx.fillRect(fx-18+tooth*9,fy+38+melt*20,7,-(8+melt*4));
+        }
+        // Melting flesh drips
+        for(let d=0;d<8;d++){
+          const dx=fx-28+d*8;
+          const dh=20+Math.sin(t*0.5+d+fi)*25+melt*40;
+          const r=200-fi*20-d*5, g=80-fi*10, b=60-fi*5;
+          ctx.fillStyle=`rgba(${r},${g},${b},0.85)`;
+          ctx.fillRect(dx-2,fy+60,5,dh);
+          ctx.beginPath(); ctx.arc(dx,fy+60+dh,4+melt*2,0,Math.PI*2); ctx.fill();
+        }
+        // Blood from eyes
+        ctx.fillStyle='rgba(160,0,0,0.9)';
+        ctx.fillRect(fx-22,fy-18,3,20+melt*20);
+        ctx.fillRect(fx+18,fy-18,3,20+melt*20);
+      }
+      // Glitch horizontal tears
+      for(let g=0;g<4;g++){
+        if(Math.random()>0.7){
+          const gy=Math.random()*H;
+          ctx.drawImage(ctx.canvas,0,gy,W,10,Math.random()*20-10,gy,W,10);
+          ctx.fillStyle=`rgba(255,0,0,0.15)`;
+          ctx.fillRect(0,gy,W,10);
+        }
+      }
+      ctx.fillStyle=`rgba(255,0,0,${0.5+Math.sin(t*8)*0.3})`;
+      ctx.font='bold 18px monospace'; ctx.textAlign='center';
+      ctx.fillText('DO NOT ADJUST YOUR MONITOR',W/2,H-25);
+      ctx.textAlign='left';
+    },
+
+    // VIDEO 3: Church ritual — bones and fire
+    (t) => {
+      ctx.fillStyle='#020008'; ctx.fillRect(0,0,W,H);
+      // Candles arranged in circle
+      const numCandles=12;
+      for(let c=0;c<numCandles;c++){
+        const angle=(c/numCandles)*Math.PI*2;
+        const cx=430+Math.cos(angle)*200;
+        const cy=250+Math.sin(angle)*130;
+        const flicker=Math.sin(t*8+c*1.4)*6;
+        // Candle light
+        const cg=ctx.createRadialGradient(cx,cy,0,cx,cy,80+flicker);
+        cg.addColorStop(0,`rgba(255,${150+Math.sin(t*4+c)*40},30,${0.35+Math.sin(t*3+c)*0.1})`);
+        cg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=cg; ctx.fillRect(cx-90,cy-90,180,180);
+        // Body
+        ctx.fillStyle='#ccccaa'; ctx.fillRect(cx-5,cy-35,10,40);
+        // Flame
+        ctx.fillStyle=`rgba(255,${140+Math.sin(t*10+c)*50},0,0.9)`;
+        ctx.beginPath();
+        ctx.moveTo(cx,cy-40);
+        ctx.quadraticCurveTo(cx+flicker*0.4,cy-55,cx,cy-68+Math.abs(flicker)*0.5);
+        ctx.quadraticCurveTo(cx-flicker*0.4,cy-55,cx,cy-40);
+        ctx.fill();
+      }
+      // Central pentagram
+      const pr=120;
+      ctx.strokeStyle=`rgba(${150+Math.sin(t)*40},0,0,${0.7+Math.sin(t*2)*0.2})`; ctx.lineWidth=3;
+      for(let p=0;p<5;p++){
+        const a1=(p*4*Math.PI/5)-Math.PI/2+t*0.05;
+        const a2=((p+2)*4*Math.PI/5)-Math.PI/2+t*0.05;
+        ctx.beginPath();
+        ctx.moveTo(430+Math.cos(a1)*pr,250+Math.sin(a1)*pr);
+        ctx.lineTo(430+Math.cos(a2)*pr,250+Math.sin(a2)*pr);
+        ctx.stroke();
+      }
+      // Altar bones
+      ctx.fillStyle='rgba(210,195,165,0.9)';
+      // Skull on altar
+      ctx.beginPath(); ctx.ellipse(430,310,30,25,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#020008';
+      ctx.beginPath(); ctx.ellipse(418,306,8,9,0,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(442,306,8,9,0,0,Math.PI*2); ctx.fill();
+      // Spine
+      for(let v=0;v<8;v++){
+        ctx.fillStyle=`rgba(210,195,165,${0.8+Math.sin(t+v)*0.1})`;
+        ctx.beginPath(); ctx.ellipse(430,340+v*12,10,6,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#020008';
+        ctx.fillRect(429,344+v*12,2,8);
+      }
+      // Blood on floor radiating from center
+      const bloodGrad=ctx.createRadialGradient(430,250,0,430,250,200);
+      bloodGrad.addColorStop(0,`rgba(${100+Math.sin(t)*20},0,0,${0.4+Math.sin(t*0.5)*0.1})`);
+      bloodGrad.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=bloodGrad; ctx.fillRect(0,0,W,H);
+      // Latin text
+      ctx.fillStyle=`rgba(255,0,0,${0.6+Math.sin(t*6)*0.3})`;
+      ctx.font=`${16+Math.sin(t)*2}px serif`; ctx.textAlign='center';
+      const chants=['IN NOMINE BESTIAE','PORTA APERTA EST','VENITE AD ME OMNES','NON POSSUMUS EXIRE'];
+      ctx.fillText(chants[Math.floor(t*0.4)%4],W/2,H-40);
+      ctx.font='14px serif';
+      ctx.fillText('ET LUMEN EXTINCTUM EST',W/2,H-20);
+      ctx.textAlign='left';
+      // Dark smoky overlay
+      for(let sm=0;sm<6;sm++){
+        const sg=ctx.createRadialGradient(Math.random()*W,Math.random()*H,0,Math.random()*W,Math.random()*H,120);
+        sg.addColorStop(0,'rgba(0,0,0,0.15)'); sg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=sg; ctx.fillRect(0,0,W,H);
+      }
+    },
+
+    // VIDEO 4: THE FINAL — black with text and then HAND
+    (t) => {
+      ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+      // Heavy static
+      for(let s=0;s<400;s++){
+        ctx.fillStyle=`rgba(${Math.random()*60},0,0,${Math.random()*0.4})`;
+        ctx.fillRect(Math.random()*W,Math.random()*H,Math.random()*8,Math.random()*3);
+      }
+      // Phase 1: text
+      if(t<4){
+        ctx.fillStyle=`rgba(255,0,0,${Math.min(1,t/1.5)*(0.7+Math.sin(t*6)*0.3)})`;
+        ctx.font=`bold ${40+Math.sin(t*2)*4}px monospace`; ctx.textAlign='center';
+        ctx.fillText('IT IS WATCHING',W/2,H/2-30);
+        ctx.font=`bold ${20+Math.sin(t*3)*2}px monospace`;
+        ctx.fillStyle=`rgba(255,255,255,${Math.min(1,(t-1)/2)*0.7})`;
+        ctx.fillText('THERE IS NO ESCAPE',W/2,H/2+20);
+      }
+      // Phase 2: hand emerges + more text
+      if(t>=3){
+        const handP=Math.min(1,(t-3)/5);
+        const handY=H-(handP*H*0.85);
+        // Bloody arm up
+        ctx.fillStyle=`rgba(${120+Math.sin(t)*15},${40+Math.sin(t*0.5)*8},35,0.97)`;
+        ctx.fillRect(W/2-45,handY+80,90,H-handY);
+        // Palm
+        ctx.beginPath(); ctx.ellipse(W/2,handY+70,70,50,0,0,Math.PI*2); ctx.fill();
+        // Fingers
+        const fAngles=[-0.45,-0.18,0,0.18,0.4];
+        const fLens=[100,130,145,130,105];
+        fAngles.forEach((fa,fi)=>{
+          ctx.save();
+          ctx.translate(W/2-40+fi*20,handY+30);
+          ctx.rotate(fa-Math.PI/2);
+          ctx.fillStyle=`rgba(${125+fi*6},${42+fi*4},38,0.96)`;
+          ctx.fillRect(-8,0,16,fLens[fi]+Math.sin(t*2+fi)*6);
+          // Nail — black cracked
+          ctx.fillStyle='rgba(15,8,8,0.95)';
+          ctx.fillRect(-7,0,14,22);
+          ctx.strokeStyle='rgba(60,0,0,0.6)'; ctx.lineWidth=1;
+          ctx.beginPath(); ctx.moveTo(-2,5); ctx.lineTo(-2,18); ctx.stroke();
+          ctx.restore();
+          ctx.fillStyle=`rgba(${120+fi*6},${40+fi*4},35,0.97)`;
+        });
+        // Veins on arm
+        ctx.strokeStyle=`rgba(80,0,0,${0.6+Math.sin(t)*0.2})`; ctx.lineWidth=2;
+        for(let v=0;v<5;v++){
+          ctx.beginPath();
+          ctx.moveTo(W/2-30+v*12,handY+100);
+          ctx.bezierCurveTo(
+            W/2-30+v*12+Math.sin(t+v)*6,handY+160,
+            W/2-30+v*12-Math.sin(t+v)*6,handY+220,
+            W/2-30+v*12+Math.sin(t+v)*4,H
+          );
+          ctx.stroke();
+        }
+        // Blood dripping from fingertips
+        fAngles.forEach((fa,fi)=>{
+          const bx=W/2-40+fi*20;
+          const by=handY+30-fLens[fi]-22;
+          for(let d=0;d<3;d++){
+            const bh=10+Math.sin(t*3+fi+d)*15+handP*30;
+            ctx.fillStyle='rgba(160,0,0,0.95)';
+            ctx.fillRect(bx+d*3-3,by,3,bh);
+            ctx.beginPath(); ctx.arc(bx+d*3-1,by+bh,4,0,Math.PI*2); ctx.fill();
+          }
+        });
+        // Blood spreading on ground
+        const bg=ctx.createRadialGradient(W/2,H,0,W/2,H,300*handP);
+        bg.addColorStop(0,`rgba(${90+Math.sin(t)*15},0,0,${handP*0.8})`);
+        bg.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+      }
+      // Phase 3: face behind hand
+      if(t>=5){
+        const fa2=Math.min(1,(t-5)/3);
+        ctx.fillStyle=`rgba(${100+Math.sin(t*3)*30},${30+Math.sin(t)*10},25,${fa2*0.5})`;
+        ctx.beginPath(); ctx.ellipse(W/2,H/2-50,120,140,0,0,Math.PI*2); ctx.fill();
+        // Eyes glowing
+        ctx.fillStyle=`rgba(255,0,0,${fa2*(0.7+Math.sin(t*5)*0.3)})`;
+        ctx.beginPath(); ctx.ellipse(W/2-40,H/2-80,25,16,0,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(W/2+40,H/2-80,25,16,0,0,Math.PI*2); ctx.fill();
+      }
+      ctx.textAlign='left';
+      // Scanlines
+      ctx.fillStyle='rgba(0,0,0,0.15)';
+      for(let sl=0;sl<H;sl+=4){ ctx.fillRect(0,sl,W,2); }
+    }
+  ];
+
+  let lastT = performance.now();
+  const draw = () => {
+    const now = performance.now();
+    t = (now - startMs) / 1000;
+    if (!videoPaused) renders[idx](t);
+    videoAnimId = requestAnimationFrame(draw);
+  };
+  draw();
+}
+
+function startVideoTimer() {
+  if (videoTimerHandle) clearInterval(videoTimerHandle);
+  videoTimerHandle = setInterval(() => {
+    if (videoPaused) return;
+    videoTimeSec += 0.5;
+    if (videoTimeSec > videoTotalSec) videoTimeSec = videoTotalSec;
+    const pct = videoTimeSec / videoTotalSec;
+    document.getElementById('progress-bar').style.width = (pct * 100) + '%';
+    const fmt = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+    document.getElementById('video-time').textContent = `${fmt(videoTimeSec)} / ${fmt(videoTotalSec)}`;
+  }, 500);
+}
+
+// ======================================================
+// POPUP — blank window before last video
+// ======================================================
+function showPopup(videoIdx) {
+  ensureAudio();
+  popupShown = true;
+  playTone(300, 0.4, 'square', 0.15);
+
+  document.getElementById('popup-title-text').textContent = '\u00a0';
+  document.getElementById('popup-content').innerHTML = '<p style="color:#333;font-size:12px;font-family:\'Courier New\',monospace">&nbsp;</p>';
+  document.getElementById('popup-overlay').style.display = 'flex';
+
+  const ok = document.getElementById('popup-ok-btn');
+  const cl = document.getElementById('popup-close-btn');
+  const handler = () => {
+    document.getElementById('popup-overlay').style.display = 'none';
+    playClick();
+    openVideo(videoIdx);
+  };
+  ok.onclick = handler;
+  cl.onclick = handler;
+}
+
+// ======================================================
+// ENDING / SCREAMER
+// ======================================================
+function triggerEnding() {
+  if (endingStarted) return;
+  endingStarted = true;
+  ensureAudio();
+  playHeavyScream();
+
+  stopVideo();
+
+  const sc = document.getElementById('screamer-overlay');
+  sc.style.display = 'flex';
+  const canvas = document.getElementById('screamer-canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  let t = 0;
+  let phase = 0;
+  let lastSnd = 0;
+
+  const drawScreamer = () => {
+    t += 0.03;
+
+    // Phase transitions
+    if (t > 3 && phase < 1) phase = 1;
+    if (t > 7 && phase < 2) { phase = 2; playHeavyScream(); }
+    if (t > 11 && phase < 3) { phase = 3; }
+    if (t > 14) {
+      // Final black
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = `rgba(255,0,0,${Math.abs(Math.sin(t*3))*0.5})`;
+      ctx.font = `bold ${50+Math.sin(t*5)*8}px monospace`; ctx.textAlign = 'center';
+      ctx.fillText('⛧', W/2, H/2+20);
+      ctx.font = '20px monospace';
+      ctx.fillStyle = `rgba(255,255,255,${Math.max(0,Math.sin(t*2)*0.5)})`;
+      ctx.fillText('[ NO SIGNAL ]', W/2, H/2+70);
+      ctx.textAlign = 'left';
+      requestAnimationFrame(drawScreamer);
+      return;
+    }
+
+    // Sound pulses
+    if (t - lastSnd > 0.3 + Math.random() * 0.4) {
+      lastSnd = t;
+      if (audioCtx) {
+        playTone(30 + Math.random() * 200, 0.3, 'sawtooth', 0.4, Math.random() * 200 - 100);
+        playNoise(0.2, 0.3);
+      }
+    }
+
+    if (phase === 0) {
+      // Heavy static + flashing red
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+      // Full static
+      const id = ctx.createImageData(W, H);
+      const data = id.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const v = Math.random() * 80;
+        data[i] = v + Math.random() * 100;
+        data[i+1] = 0;
+        data[i+2] = 0;
+        data[i+3] = 255;
+      }
+      ctx.putImageData(id, 0, 0);
+      // Red flashes
+      if (Math.random() > 0.5) {
+        ctx.fillStyle = `rgba(255,0,0,${Math.random() * 0.7})`;
+        ctx.fillRect(0,0,W,H);
+      }
+      ctx.fillStyle = `rgba(255,0,0,${0.6+Math.sin(t*20)*0.4})`;
+      ctx.font = `bold ${60+Math.sin(t*10)*15}px monospace`; ctx.textAlign = 'center';
+      ctx.fillText('IT FOUND YOU', W/2, H/3);
+      ctx.textAlign = 'left';
+
+    } else if (phase === 1) {
+      // Screamer face
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+
+      // Rapid flash between static and face
+      if (Math.sin(t * 15) > 0) {
+        // SCREAMER FACE — distorted horror face
+        const faceX = W/2, faceY = H/2;
+        const pulse = Math.abs(Math.sin(t * 8));
+
+        // Face background glow
+        const fg = ctx.createRadialGradient(faceX, faceY, 0, faceX, faceY, 350);
+        fg.addColorStop(0, `rgba(${100+pulse*80},0,0,0.9)`);
+        fg.addColorStop(0.5, `rgba(${50+pulse*30},0,0,0.6)`);
+        fg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = fg; ctx.fillRect(0,0,W,H);
+
+        // Skin — pale decayed
+        ctx.fillStyle = `rgba(${180+pulse*30},${130+pulse*20},${100+pulse*15},0.97)`;
+        ctx.beginPath(); ctx.ellipse(faceX, faceY-30, 200+pulse*20, 240+pulse*25, 0, 0, Math.PI*2); ctx.fill();
+
+        // Forehead cracks
+        ctx.strokeStyle = 'rgba(60,0,0,0.8)'; ctx.lineWidth = 3;
+        for (let c = 0; c < 8; c++) {
+          ctx.beginPath();
+          ctx.moveTo(faceX - 80 + c * 22, faceY - 200);
+          ctx.bezierCurveTo(
+            faceX - 80 + c * 22 + Math.sin(t + c) * 15, faceY - 150,
+            faceX - 80 + c * 22 - Math.sin(t + c) * 15, faceY - 100,
+            faceX - 80 + c * 22 + Math.sin(t * 2 + c) * 10, faceY - 60
+          );
+          ctx.stroke();
+        }
+
+        // Eyes — WIDE open all-white
+        // Left eye
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.ellipse(faceX-75, faceY-80, 55+pulse*10, 45+pulse*8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.ellipse(faceX+75, faceY-80, 55+pulse*10, 45+pulse*8, 0, 0, Math.PI*2); ctx.fill();
+        // Irises — completely bloodshot
+        const irisR = 22 + pulse * 5;
+        ctx.fillStyle = `rgba(${180+pulse*40},0,0,0.95)`;
+        ctx.beginPath(); ctx.arc(faceX-75+Math.sin(t*3)*8, faceY-80+Math.cos(t*2)*6, irisR, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(faceX+75-Math.sin(t*3)*8, faceY-80+Math.cos(t*2)*6, irisR, 0, Math.PI*2); ctx.fill();
+        // Pupils — huge dilated
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.arc(faceX-75+Math.sin(t*3)*8, faceY-80+Math.cos(t*2)*6, 14+pulse*4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(faceX+75-Math.sin(t*3)*8, faceY-80+Math.cos(t*2)*6, 14+pulse*4, 0, Math.PI*2); ctx.fill();
+        // Blood from eyes
+        ctx.fillStyle = 'rgba(150,0,0,0.95)';
+        ctx.fillRect(faceX-78, faceY-60, 6, 80 + pulse * 30);
+        ctx.fillRect(faceX+72, faceY-60, 6, 80 + pulse * 30);
+        // Veins in eyes
+        ctx.strokeStyle = 'rgba(200,0,0,0.8)'; ctx.lineWidth = 1.5;
+        for (let v = 0; v < 12; v++) {
+          const va = (v / 12) * Math.PI * 2;
+          const side = v < 6 ? -1 : 1;
+          const ex = faceX + side * 75;
+          ctx.beginPath();
+          ctx.moveTo(ex + Math.cos(va) * irisR, faceY - 80 + Math.sin(va) * (irisR * 0.8));
+          ctx.lineTo(ex + Math.cos(va) * (40+pulse*8), faceY - 80 + Math.sin(va) * (35+pulse*6));
+          ctx.stroke();
+        }
+
+        // Nose — decayed hole
+        ctx.fillStyle = 'rgba(30,10,10,0.9)';
+        ctx.beginPath(); ctx.ellipse(faceX, faceY+10, 20, 28, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(60,0,0,0.7)';
+        ctx.beginPath(); ctx.ellipse(faceX-10, faceY+5, 8, 12, -0.3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(faceX+10, faceY+5, 8, 12, 0.3, 0, Math.PI*2); ctx.fill();
+
+        // Mouth — WIDE OPEN SCREAMING
+        ctx.fillStyle = 'rgba(10,0,0,0.98)';
+        ctx.beginPath();
+        ctx.ellipse(faceX, faceY+110+pulse*20, 110+pulse*30, 80+pulse*25, 0, 0, Math.PI*2);
+        ctx.fill();
+        // Upper teeth
+        ctx.fillStyle = 'rgba(220,210,195,0.97)';
+        for (let t2 = 0; t2 < 10; t2++) {
+          const tx = faceX - 90 + t2 * 20;
+          const th = 30 + Math.random() * 10;
+          ctx.fillRect(tx, faceY + 50 + pulse * 10, 15, th);
+        }
+        // Lower teeth — uneven
+        for (let t2 = 0; t2 < 9; t2++) {
+          const tx = faceX - 80 + t2 * 19;
+          const th = 25 + Math.sin(t + t2) * 8;
+          ctx.fillRect(tx, faceY + 155 + pulse * 20 - th, 13, th);
+        }
+        // Tongue — dark purple-red
+        ctx.fillStyle = `rgba(${140+pulse*30},${20+pulse*10},${40},0.95)`;
+        ctx.beginPath();
+        ctx.ellipse(faceX, faceY + 155 + pulse * 20, 60+pulse*10, 40+pulse*8, 0, 0, Math.PI*2);
+        ctx.fill();
+        // Saliva/blood strings
+        ctx.strokeStyle = 'rgba(180,0,0,0.8)'; ctx.lineWidth = 2;
+        for (let s = 0; s < 6; s++) {
+          const sx = faceX - 50 + s * 20;
+          ctx.beginPath();
+          ctx.moveTo(sx, faceY + 70 + pulse * 10);
+          ctx.bezierCurveTo(sx + Math.sin(t * 3 + s) * 10, faceY + 110 + pulse * 15, sx - Math.sin(t * 3 + s) * 10, faceY + 140 + pulse * 18, sx, faceY + 155 + pulse * 20);
+          ctx.stroke();
+        }
+
+        // Skin decay spots
+        for (let d = 0; d < 15; d++) {
+          ctx.fillStyle = `rgba(${30+Math.random()*40},${10+Math.random()*15},0,${0.3+Math.random()*0.4})`;
+          ctx.beginPath();
+          ctx.arc(
+            faceX - 150 + Math.random() * 300,
+            faceY - 200 + Math.random() * 400,
+            3 + Math.random() * 12, 0, Math.PI * 2
+          );
+          ctx.fill();
+        }
+
+        // Hair — stringy / missing patches
+        ctx.strokeStyle = 'rgba(20,15,10,0.8)'; ctx.lineWidth = 2;
+        for (let h = 0; h < 30; h++) {
+          const hx = faceX - 180 + h * 13;
+          const hy = faceY - 250;
+          ctx.beginPath();
+          ctx.moveTo(hx, hy);
+          ctx.bezierCurveTo(hx + Math.sin(t + h) * 10, hy + 40, hx - Math.sin(t + h) * 10, hy + 80, hx + Math.sin(t * 2 + h) * 8, hy + 110);
+          ctx.stroke();
+        }
+
+      } else {
+        // Static frame
+        const id = ctx.createImageData(W, H);
+        const data = id.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const v = Math.random() * 100;
+          data[i] = v + Math.random() * 150;
+          data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+        }
+        ctx.putImageData(id, 0, 0);
+      }
+
+    } else if (phase === 2) {
+      // HAND fully coming out
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+      const handProgress = Math.min(1, (t - 7) / 4);
+      const handY = H - handProgress * (H * 0.95);
+
+      // Darkness glow
+      const hg = ctx.createRadialGradient(W/2, H, 0, W/2, H, H);
+      hg.addColorStop(0, `rgba(${80+Math.sin(t*3)*20},0,0,${0.5+Math.sin(t*2)*0.1})`);
+      hg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = hg; ctx.fillRect(0,0,W,H);
+
+      // Massive arm
+      ctx.fillStyle = `rgba(${110+Math.sin(t)*15},${35+Math.sin(t*0.5)*8},30,0.98)`;
+      ctx.fillRect(W/2 - 100, handY + 120, 200, H - handY + 10);
+
+      // Palm
+      ctx.beginPath(); ctx.ellipse(W/2, handY + 100, 120, 90, 0, 0, Math.PI * 2); ctx.fill();
+
+      // 5 massive fingers
+      const fData = [
+        {x: -90, a: -0.5, l: 220}, {x: -45, a: -0.2, l: 270},
+        {x: 0, a: 0, l: 290}, {x: 45, a: 0.2, l: 270}, {x: 85, a: 0.45, l: 210}
+      ];
+      fData.forEach((f, fi) => {
+        ctx.save();
+        ctx.translate(W/2 + f.x, handY + 40);
+        ctx.rotate(f.a - Math.PI/2);
+        ctx.fillStyle = `rgba(${112+fi*4},${37+fi*3},32,0.97)`;
+        ctx.fillRect(-16, 0, 32, f.l + Math.sin(t * 2 + fi) * 8);
+        // Knuckle lines
+        ctx.strokeStyle = 'rgba(60,0,0,0.6)'; ctx.lineWidth = 2;
+        [50, 100, 150].forEach(ky => {
+          ctx.beginPath(); ctx.moveTo(-14, ky); ctx.lineTo(14, ky); ctx.stroke();
+        });
+        // Nail — long cracked black
+        ctx.fillStyle = 'rgba(8,4,4,0.97)';
+        ctx.fillRect(-14, 0, 28, 35);
+        // Nail cracks
+        ctx.strokeStyle = 'rgba(80,0,0,0.7)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(-5, 30); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(5, 3); ctx.lineTo(8, 28); ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = `rgba(${112+fi*4},${37+fi*3},32,0.97)`;
+      });
+
+      // Veins massive
+      ctx.strokeStyle = `rgba(80,0,0,${0.7+Math.sin(t)*0.2})`; ctx.lineWidth = 4;
+      for (let v = 0; v < 8; v++) {
+        ctx.beginPath();
+        ctx.moveTo(W/2 - 70 + v * 18, handY + 150);
+        ctx.bezierCurveTo(
+          W/2 - 70 + v * 18 + Math.sin(t + v) * 20, handY + 250,
+          W/2 - 70 + v * 18 - Math.sin(t + v) * 20, handY + 350,
+          W/2 - 70 + v * 18 + Math.sin(t * 2 + v) * 15, H
+        );
+        ctx.stroke();
+      }
+
+      // Blood massive pool
+      const bp = ctx.createRadialGradient(W/2, H, 0, W/2, H, 500 * handProgress);
+      bp.addColorStop(0, `rgba(${100+Math.sin(t)*15},0,0,${handProgress * 0.9})`);
+      bp.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = bp; ctx.fillRect(0,0,W,H);
+
+      // Blood from fingertips dripping
+      fData.forEach((f, fi) => {
+        for (let d = 0; d < 5; d++) {
+          const bx = W/2 + f.x - 10 + d * 5;
+          const by = handY + 40 - (f.l + 35);
+          const bh = 15 + Math.sin(t * 3 + fi + d) * 20 + handProgress * 60;
+          ctx.fillStyle = 'rgba(160,0,0,0.97)';
+          ctx.fillRect(bx, by, 4, bh);
+          ctx.beginPath(); ctx.arc(bx + 2, by + bh, 6, 0, Math.PI * 2); ctx.fill();
+        }
+      });
+
+      // Red flash
+      if (Math.random() > 0.8) {
+        ctx.fillStyle = `rgba(255,0,0,${Math.random() * 0.3})`;
+        ctx.fillRect(0,0,W,H);
+      }
+
+    } else if (phase === 3) {
+      // Alternating — screamer face / black / static very fast
+      const flash = Math.floor(t * 15) % 3;
+      if (flash === 0) {
+        // Face — same as phase 1 but faster
+        ctx.fillStyle = 'rgba(180,130,100,0.97)';
+        ctx.beginPath(); ctx.ellipse(W/2, H/2-30, 200, 240, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.ellipse(W/2-75, H/2-80, 55, 45, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(W/2+75, H/2-80, 55, 45, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(200,0,0,0.95)';
+        ctx.beginPath(); ctx.arc(W/2-75, H/2-80, 22, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(W/2+75, H/2-80, 22, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(10,0,0,0.98)';
+        ctx.beginPath(); ctx.ellipse(W/2, H/2+110, 110, 80, 0, 0, Math.PI*2); ctx.fill();
+      } else if (flash === 1) {
+        ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+        ctx.fillStyle = `rgba(255,0,0,${Math.random()})`;
+        ctx.fillRect(0,0,W,H);
+      } else {
+        const id = ctx.createImageData(W, H);
+        const data = id.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const v = Math.random() * 255;
+          data[i] = v; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+        }
+        ctx.putImageData(id, 0, 0);
+      }
+    }
+
+    requestAnimationFrame(drawScreamer);
+  };
+
+  drawScreamer();
+}
+
+// ======================================================
+// ESCAPE ATTEMPT HANDLERS
+// ======================================================
+function closeVideoAttempt() {
+  ensureAudio();
+  if (lastVideoOpened) {
+    escapeAttempts++;
+    showMessage(['YOU CAN\'T CLOSE THIS.', 'IT WON\'T LET YOU LEAVE.', 'THE VIDEO CONTINUES.', 'THERE IS NO CLOSE BUTTON.'][escapeAttempts % 4]);
+    playTone(80, 0.4, 'sawtooth', 0.25);
+    triggerGlitch(false);
+    return;
+  }
+  stopVideo();
+  document.getElementById('video-player-overlay').style.display = 'none';
+}
+
+document.getElementById('close-video-btn').onclick = closeVideoAttempt;
+
+document.getElementById('play-pause-btn').onclick = () => {
+  ensureAudio();
+  if (lastVideoOpened) {
+    videoPaused = !videoPaused;
+    document.getElementById('play-pause-btn').textContent = videoPaused ? '▶' : '⏸';
+    if (videoPaused) {
+      showMessage('PAUSED — IT IS STILL WATCHING YOU.');
+      playTone(120, 0.3, 'square', 0.2);
+      setTimeout(() => {
+        if (videoPaused) {
+          videoPaused = false;
+          document.getElementById('play-pause-btn').textContent = '⏸';
+          showMessage('THE VIDEO UNPAUSED ITSELF.');
+          playScream();
+          triggerGlitch(true);
+        }
+      }, 2500);
+    }
+    return;
+  }
+  videoPaused = !videoPaused;
+  document.getElementById('play-pause-btn').textContent = videoPaused ? '▶' : '⏸';
+};
+
+function browserBack() {
+  ensureAudio();
+  if (gamePhase >= 4) {
+    escapeAttempts++;
+    showMessage('ERROR 666: CANNOT GO BACK. THIS IS THE ONLY PAGE.');
+    playTone(60, 0.5, 'square', 0.28);
+    triggerGlitch(escapeAttempts > 2);
+    return;
+  }
+  showMessage('BACK BUTTON UNAVAILABLE.');
+}
+
+function browserRefresh() {
+  ensureAudio();
+  if (gamePhase >= 4) {
+    showMessage('REFRESH FAILED. THE PAGE IS ALWAYS LOADING.');
+    triggerGlitch(false);
+    return;
+  }
+  handleRefresh();
+}
+
+function openBrowser() {
+  ensureAudio();
+  document.getElementById('browser-window').style.display = 'flex';
+  if (gamePhase === 0) { gamePhase = 1; renderYT(); }
+}
+
+function openTaskManager() {
+  ensureAudio();
+  document.getElementById('task-manager-overlay').style.display = 'block';
+  if (gamePhase >= 4) {
+    playTone(200, 0.3, 'square', 0.18);
+    const cpuEl = document.getElementById('tm-cpu');
+    const stEl = document.getElementById('tm-status');
+    let c = 666;
+    const iv = setInterval(() => {
+      c = 666 + Math.floor(Math.random() * 334);
+      if (cpuEl) cpuEl.textContent = c + '%';
+      if (stEl) stEl.textContent = ['CANNOT STOP','FEEDING','SPREADING','∞%'][Math.floor(Math.random()*4)];
+    }, 200);
+    setTimeout(() => clearInterval(iv), 5000);
+  }
+}
+
+function closeTaskManager() {
+  document.getElementById('task-manager-overlay').style.display = 'none';
+}
+
+function endTask() {
+  ensureAudio();
+  if (gamePhase >= 4) {
+    showMessage('ACCESS DENIED\nProcess 666.exe cannot be terminated.\nError: 0x00000666');
+    playScream();
+    closeTaskManager();
+    triggerGlitch(true);
+  } else {
+    closeTaskManager();
+  }
+}
+
+function attemptShutdown() {
+  ensureAudio();
+  if (gamePhase < 4) {
+    const so = document.getElementById('shutdown-overlay');
+    document.getElementById('shutdown-text').textContent = 'Shutting down...';
+    so.style.display = 'flex';
+    setTimeout(() => { so.style.display = 'none'; showMessage('Your computer restarted... but the page remained.'); }, 2500);
+    return;
+  }
+  const msgs = [
+    'Shutting down...',
+    'Saving settings...',
+    'ERROR: Shutdown blocked.',
+    'ERROR: Process 666.exe is preventing shutdown.',
+    'SHUTDOWN DENIED.',
+    'THE MACHINE BELONGS TO IT.',
+    'IT DOES NOT SLEEP.',
+    ''
+  ];
+  const so = document.getElementById('shutdown-overlay');
+  const st = document.getElementById('shutdown-text');
+  so.style.display = 'flex';
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i < msgs.length) {
+      st.textContent = msgs[i];
+      playTone(120 - i * 12, 0.4, 'square', 0.2);
+      i++;
+    } else {
+      clearInterval(iv);
+      so.style.display = 'none';
+      triggerGlitch(true);
+      playScream();
+      showMessage('THE COMPUTER RESTARTED. THE PAGE IS STILL THERE.');
+    }
+  }, 1400);
+}
+
+// ======================================================
+// KEY BINDINGS
+// ======================================================
+document.addEventListener('keydown', e => {
+  if (!audioCtx && (e.ctrlKey || e.key === 'Escape' || e.key === 'F5')) ensureAudio();
+  if ((e.ctrlKey && e.shiftKey && e.key === 'Escape') || (e.ctrlKey && e.altKey && e.key === 'Delete')) {
+    e.preventDefault(); openTaskManager();
+  }
+  if (e.altKey && e.key === 'F4') { e.preventDefault(); attemptShutdown(); }
+  if (e.key === 'Escape') {
+    if (gamePhase >= 4) {
+      showMessage('ESC DISABLED — 666.exe IS RUNNING');
+      playTone(60, 0.3, 'sawtooth', 0.2);
+    }
+  }
+  if (e.key === 'F5') { e.preventDefault(); browserRefresh(); }
+  if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); browserBack(); }
+});
+
+document.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (gamePhase >= 4) showMessage('RIGHT-CLICK DISABLED BY 666.exe');
+});
+
+// ======================================================
+// UTILITY
+// ======================================================
+function playClick() {
+  if (!audioCtx) return;
+  playTone(900, 0.04, 'square', 0.08);
+}
+
+function showMessage(msg) {
+  const el = document.getElementById('message-display');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(window._msgT);
+  window._msgT = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+function updateClock() {
+  const el = document.getElementById('taskbar-time');
+  if (!el) return;
+  if (gamePhase >= 4) {
+    el.textContent = '66:66 AM';
+    el.style.color = '#ff4444';
+  } else {
+    const n = new Date();
+    el.textContent = `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+    el.style.color = '#fff';
+  }
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ======================================================
+// LOADING SCREEN
+// ======================================================
+function runLoading() {
+  const canvas = document.getElementById('loading-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = 320, H = 100;
+  let t = 0;
+  const msgs = [
+    'Connecting to www.youtube.com/666',
+    'Fetching channel data...',
+    'Something is wrong with this page...',
+    'WARNING: Unusual activity detected',
+    'Continue loading anyway...'
+  ];
+  let msgIdx = 0;
+  const msgEl = document.getElementById('loading-text');
+
+  const drawBar = () => {
+    t += 0.008;
+    const prog = Math.min(1, t / 0.8);
+    ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
+    // YouTube logo
+    ctx.fillStyle = '#ff0000'; ctx.fillRect(110, 15, 100, 28);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(128,19); ctx.lineTo(128,37); ctx.lineTo(196,28); ctx.closePath(); ctx.fill();
+    // Bar
+    ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 2; ctx.strokeRect(30, 60, 260, 18);
+    ctx.fillStyle = '#ff0000'; ctx.fillRect(32, 62, (prog * 256), 14);
+    // Pct
+    ctx.fillStyle = '#fff'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(Math.floor(prog * 100) + '%', W/2, 57);
+    ctx.textAlign = 'left';
+    if (t < 0.8) requestAnimationFrame(drawBar);
+  };
+  drawBar();
+
+  const msgIv = setInterval(() => {
+    if (msgIdx < msgs.length - 1) msgIdx++;
+    msgEl.textContent = msgs[msgIdx];
+  }, 1000);
+
+  setTimeout(() => {
+    clearInterval(msgIv);
+    document.getElementById('loading-screen').style.display = 'none';
+    openBrowser();
+  }, 5200);
+}
+
+window.onload = runLoading;
+</script>
+</body>
+</html>
+```
