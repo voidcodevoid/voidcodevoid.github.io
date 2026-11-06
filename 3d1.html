@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tuesday Evening</title>
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+}
+body {
+    overflow: hidden;
+    background-color: #2b2927;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #d4d0c8;
+}
+#canvas-container {
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+#ui {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 36px;
+}
+#objective {
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #c2bdb2;
+    background: rgba(24, 23, 21, 0.85);
+    padding: 10px 16px;
+    border-left: 3px solid #8c3b32;
+    align-self: flex-start;
+}
+#crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 5px;
+    height: 5px;
+    background-color: rgba(255, 255, 255, 0.45);
+    border-radius: 50%;
+    transition: all 0.15s ease;
+}
+#crosshair.active {
+    width: 12px;
+    height: 12px;
+    background-color: transparent;
+    border: 2px solid #b84237;
+}
+#prompt {
+    position: absolute;
+    top: 53%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #e0dcd3;
+    background: rgba(20, 19, 18, 0.9);
+    padding: 5px 12px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+#subtitles {
+    align-self: center;
+    max-width: 620px;
+    text-align: center;
+    font-size: 16px;
+    line-height: 1.55;
+    font-weight: 400;
+    color: #e6e2d8;
+    background: rgba(20, 19, 18, 0.92);
+    padding: 18px 26px;
+    border-bottom: 2px solid #8c3b32;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+#overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #24221f;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    padding: 40px;
+    text-align: center;
+}
+#overlay h1 {
+    font-weight: 400;
+    font-size: 28px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+    color: #dcd7cc;
+}
+#overlay p {
+    max-width: 460px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #969187;
+    margin-bottom: 34px;
+}
+#start-btn {
+    padding: 12px 32px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: #3d3934;
+    color: #e0dcd3;
+    border: 1px solid #57524b;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+#start-btn:hover {
+    background: #8c3b32;
+    border-color: #8c3b32;
+}
+#ending-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #121110;
+    color: #c7c2b8;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 20;
+    padding: 50px;
+    opacity: 0;
+    transition: opacity 2s ease;
+}
+#ending-content {
+    max-width: 620px;
+    text-align: left;
+}
+#ending-content h2 {
+    font-weight: 400;
+    font-size: 19px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #a84237;
+    margin-bottom: 24px;
+    border-bottom: 1px solid #2e2c29;
+    padding-bottom: 12px;
+}
+#ending-content p {
+    font-size: 15px;
+    line-height: 1.75;
+    color: #a39e93;
+    margin-bottom: 20px;
+}
+#ending-choice-title {
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #66625b;
+    margin-bottom: 8px;
+}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="ui">
+    <div id="objective">Task: Look at the dining table</div>
+    <div id="crosshair"></div>
+    <div id="prompt">[Click] Interact</div>
+    <div id="subtitles"></div>
+</div>
+
+<div id="overlay">
+    <h1>Tuesday Evening</h1>
+    <p>You came home from work. Now you get to walk around a four-room box and click on household objects until something finally happens.<br><br>WASD to walk. Mouse to look. Left Click to interact.</p>
+    <button id="start-btn">Clock In</button>
+</div>
+
+<div id="ending-screen">
+    <div id="ending-content">
+        <div id="ending-choice-title"></div>
+        <h2>Afterword: What Did You Expect?</h2>
+        <p id="ending-specific"></p>
+        <p>You followed every little prompt on the screen. You heated the dinner, you oiled the metal, you painted pretty dots on the barrel, and then you walked into the bedroom and pulled the trigger. You did it because the checklist told you to, and because walking around an empty apartment gets old after two minutes.</p>
+        <p>That is the entire joke of a comfortable life. There is no big tragedy here, no secret trauma to uncover, and no reason for that gun to be on the table other than to give your hands something to do. When a life is completely padded, safe, and dead from the neck up, you don't blow it apart out of passion.</p>
+        <p>You do it out of sheer, petty boredom—just to see if the button actually works.</p>
+    </div>
+</div>
+
+<script>
+let scene, camera, renderer;
+let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+let yaw = 0, pitch = 0;
+let isLocked = false;
+let gameEnded = false;
+
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+let prevTime = performance.now();
+
+const interactables = [];
+const colliders = [];
+let currentIntersect = null;
+
+let gameState = 0;
+let handGunGroup = null;
+let gunParts = [];
+let tableGunGroup = null;
+let tvMaterial = null;
+let tvLight = null;
+let plateMesh = null;
+
+let audioCtx = null;
+let stepTimer = 0;
+let subtitleTimeout = null;
+
+const objectiveEl = document.getElementById('objective');
+const crosshairEl = document.getElementById('crosshair');
+const promptEl = document.getElementById('prompt');
+const subtitlesEl = document.getElementById('subtitles');
+const overlayEl = document.getElementById('overlay');
+const startBtn = document.getElementById('start-btn');
+const endingScreen = document.getElementById('ending-screen');
+const endingChoiceTitle = document.getElementById('ending-choice-title');
+const endingSpecific = document.getElementById('ending-specific');
+
+function initAudio() {
+    if (audioCtx) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContext();
+
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+
+    osc1.type = 'sawtooth';
+    osc1.frequency.value = 50;
+    osc2.type = 'sine';
+    osc2.frequency.value = 100;
+
+    filter.type = 'lowpass';
+    filter.frequency.value = 110;
+
+    gain.gain.value = 0.035;
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc1.start();
+    osc2.start();
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+
+    if (type === 'step') {
+        const bufferSize = audioCtx.sampleRate * 0.05;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 240;
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.09, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start(now);
+    } else if (type === 'pickup' || type === 'interact') {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(260, now);
+        osc.frequency.exponentialRampToValueAtTime(90, now + 0.1);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    } else if (type === 'oil') {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.linearRampToValueAtTime(340, now + 0.2);
+        osc.frequency.linearRampToValueAtTime(140, now + 0.45);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.45);
+    } else if (type === 'paint') {
+        const bufferSize = audioCtx.sampleRate * 0.35;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1);
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 2200;
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start(now);
+    } else if (type === 'gunshot') {
+        const bufferSize = audioCtx.sampleRate * 1.4;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.16));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(3600, now);
+        filter.frequency.exponentialRampToValueAtTime(120, now + 1.1);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(1.0, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.3);
+
+        const osc = audioCtx.createOscillator();
+        const oscGain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(28, now + 0.35);
+        oscGain.gain.setValueAtTime(0.8, now);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.connect(oscGain);
+        oscGain.connect(audioCtx.destination);
+
+        noise.start(now);
+        osc.start(now);
+        osc.stop(now + 0.35);
+    }
+}
+
+function createWoodTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#6e5a44';
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.strokeStyle = '#574634';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 512; i += 32) {
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(512, i);
+        ctx.stroke();
+        for (let j = 0; j < 512; j += 128) {
+            ctx.beginPath();
+            const offset = (i / 32) % 2 === 0 ? 0 : 64;
+            ctx.moveTo(j + offset, i);
+            ctx.lineTo(j + offset, i + 32);
+            ctx.stroke();
+        }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 8);
+    return tex;
+}
+
+function createPopArtTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#b82828';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#e8e4dc';
+    for (let x = 20; x < 256; x += 45) {
+        for (let y = 20; y < 256; y += 45) {
+            ctx.beginPath();
+            ctx.arc(x + ((y % 90 === 20) ? 0 : 22), y, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+function createWallArtTexture(type) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#999386';
+    ctx.fillRect(0, 0, 256, 256);
+    if (type === 1) {
+        ctx.fillStyle = '#2b2927';
+        ctx.fillRect(40, 40, 176, 176);
+        ctx.fillStyle = '#803028';
+        ctx.beginPath();
+        ctx.arc(128, 128, 46, 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        ctx.fillStyle = '#384247';
+        ctx.fillRect(30, 60, 196, 40);
+        ctx.fillStyle = '#8c5828';
+        ctx.fillRect(30, 120, 196, 80);
+    }
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createGunMesh(material) {
+    const group = new THREE.Group();
+    const parts = [];
+
+    const barrelGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.28, 16);
+    barrelGeo.rotateX(Math.PI / 2);
+    const barrel = new THREE.Mesh(barrelGeo, material);
+    barrel.position.set(0, 0.06, -0.14);
+    group.add(barrel);
+    parts.push(barrel);
+
+    const cylGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.11, 12);
+    cylGeo.rotateX(Math.PI / 2);
+    const cylinder = new THREE.Mesh(cylGeo, material);
+    cylinder.position.set(0, 0.04, 0.02);
+    group.add(cylinder);
+    parts.push(cylinder);
+
+    const frameGeo = new THREE.BoxGeometry(0.036, 0.08, 0.16);
+    const frame = new THREE.Mesh(frameGeo, material);
+    frame.position.set(0, 0.03, 0.04);
+    group.add(frame);
+    parts.push(frame);
+
+    const gripGeo = new THREE.BoxGeometry(0.034, 0.15, 0.055);
+    const grip = new THREE.Mesh(gripGeo, material);
+    grip.position.set(0, -0.05, 0.11);
+    grip.rotation.x = 0.35;
+    group.add(grip);
+    parts.push(grip);
+
+    group.traverse(child => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+        }
+    });
+
+    return { group, parts };
+}
+
+function addCollider(x, z, width, depth) {
+    colliders.push({
+        minX: x - width / 2 - 0.35,
+        maxX: x + width / 2 + 0.35,
+        minZ: z - depth / 2 - 0.35,
+        maxZ: z + depth / 2 + 0.35
+    });
+}
+
+function registerInteractable(mesh, id, label, callback) {
+    mesh.userData = { interactable: true, id, label, callback };
+    interactables.push(mesh);
+}
+
+function showSubtitle(text, duration = 6500) {
+    subtitlesEl.textContent = text;
+    subtitlesEl.style.opacity = '1';
+    if (subtitleTimeout) clearTimeout(subtitleTimeout);
+    subtitleTimeout = setTimeout(() => {
+        subtitlesEl.style.opacity = '0';
+    }, duration);
+}
+
+function setObjective(text) {
+    objectiveEl.textContent = text;
+}
+
+function initScene() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x524e48);
+    scene.fog = new THREE.FogExp2(0x4a4640, 0.045);
+
+    camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.rotation.order = 'YXZ';
+    camera.position.set(0, 1.7, 4.5);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    const hemiLight = new THREE.HemisphereLight(0xa69f91, 0x3d3934, 0.42);
+    hemiLight.position.set(0, 10, 0);
+    scene.add(hemiLight);
+
+    const createCeilingLight = (x, z, intensity = 0.42) => {
+        const light = new THREE.PointLight(0xffd296, intensity, 14);
+        light.position.set(x, 3.6, z);
+        light.castShadow = true;
+        light.shadow.bias = -0.002;
+        scene.add(light);
+
+        const fixture = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.28, 0.28, 0.05, 16),
+            new THREE.MeshBasicMaterial({ color: 0xd9c29c })
+        );
+        fixture.position.set(x, 3.98, z);
+        scene.add(fixture);
+    };
+
+    createCeilingLight(-2.2, 1.2, 0.44);
+    createCeilingLight(2.2, 1.2, 0.35);
+    createCeilingLight(-2.0, -4.2, 0.42);
+    createCeilingLight(0, -10.5, 0.35);
+
+    const floorMat = new THREE.MeshStandardMaterial({
+        map: createWoodTexture(),
+        roughness: 0.55,
+        metalness: 0.05
+    });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 22), floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0, 0, -4);
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const ceilingMat = new THREE.MeshStandardMaterial({ color: 0x78736a, roughness: 0.95 });
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(14, 22), ceilingMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(0, 4, -4);
+    scene.add(ceiling);
+
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x8c877b, roughness: 0.9 });
+    const accentWallMat = new THREE.MeshStandardMaterial({ color: 0x736e64, roughness: 0.9 });
+
+    const createWall = (x, y, z, w, h, d, mat = wallMat, collide = true) => {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        scene.add(mesh);
+        if (collide) addCollider(x, z, w, d);
+        return mesh;
+    };
+
+    createWall(0, 2, 6, 12, 4, 0.3);
+    createWall(-6, 2, -4, 0.3, 4, 20);
+    createWall(6, 2, -4, 0.3, 4, 20);
+    createWall(0, 2, -14, 12, 4, 0.3, accentWallMat);
+
+    createWall(-3.6, 2, -6, 4.8, 4, 0.3, accentWallMat);
+    createWall(3.6, 2, -6, 4.8, 4, 0.3, accentWallMat);
+    createWall(0, 3.4, -6, 2.4, 1.2, 0.3, accentWallMat, false);
+
+    const art1 = new THREE.Mesh(
+        new THREE.BoxGeometry(1.8, 1.8, 0.05),
+        new THREE.MeshStandardMaterial({ map: createWallArtTexture(1), roughness: 0.7 })
+    );
+    art1.position.set(-5.8, 2.2, 0);
+    art1.rotation.y = Math.PI / 2;
+    scene.add(art1);
+
+    const art2 = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 1.4, 0.05),
+        new THREE.MeshStandardMaterial({ map: createWallArtTexture(2), roughness: 0.7 })
+    );
+    art2.position.set(0, 2.3, 5.8);
+    scene.add(art2);
+
+    const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x3b2b1e, roughness: 0.45 });
+    const tableGroup = new THREE.Group();
+    const tableTop = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 1.5), darkWoodMat);
+    tableTop.position.y = 0.85;
+    tableTop.castShadow = true;
+    tableTop.receiveShadow = true;
+    tableGroup.add(tableTop);
+
+    const legPositions = [[-1.05, -0.6], [1.05, -0.6], [-1.05, 0.6], [1.05, 0.6]];
+    legPositions.forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.85, 12), darkWoodMat);
+        leg.position.set(lx, 0.425, lz);
+        leg.castShadow = true;
+        tableGroup.add(leg);
+    });
+    tableGroup.position.set(-2.5, 0, 1.2);
+    scene.add(tableGroup);
+    addCollider(-2.5, 1.2, 2.4, 1.5);
+
+    const bowl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.25, 0.12, 0.12, 20),
+        new THREE.MeshStandardMaterial({ color: 0xa8a399, roughness: 0.35 })
+    );
+    bowl.position.set(-3.0, 0.95, 1.0);
+    bowl.castShadow = true;
+    scene.add(bowl);
+
+    const plateMat = new THREE.MeshStandardMaterial({ color: 0xc7c2b8, roughness: 0.3 });
+    plateMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.03, 20), plateMat);
+    plateMesh.position.set(-2.5, 0.905, 1.6);
+    scene.add(plateMesh);
+    registerInteractable(plateMesh, 'plate', 'Empty Plate', onInteractPlate);
+
+    const rustedMat = new THREE.MeshStandardMaterial({
+        color: 0x4f3629,
+        roughness: 0.9,
+        metalness: 0.45
+    });
+    const tableGunObj = createGunMesh(rustedMat);
+    tableGunGroup = tableGunObj.group;
+    tableGunGroup.position.set(-2.1, 0.93, 1.2);
+    tableGunGroup.rotation.set(0, 0.6, Math.PI / 2);
+    scene.add(tableGunGroup);
+
+    const gunHitbox = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.25, 0.5),
+        new THREE.MeshBasicMaterial({ visible: false })
+    );
+    gunHitbox.position.copy(tableGunGroup.position);
+    scene.add(gunHitbox);
+    registerInteractable(gunHitbox, 'gun', 'Revolver', () => onInteractGun(gunHitbox));
+
+    const handGunObj = createGunMesh(rustedMat.clone());
+    handGunGroup = handGunObj.group;
+    gunParts = handGunObj.parts;
+    handGunGroup.position.set(0.28, -0.24, -0.45);
+    handGunGroup.rotation.set(0, -0.1, 0);
+    handGunGroup.visible = false;
+    camera.add(handGunGroup);
+    scene.add(camera);
+
+    const counterMat = new THREE.MeshStandardMaterial({ color: 0x827d73, roughness: 0.45 });
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.95, 1.1), counterMat);
+    counter.position.set(-2.6, 0.475, -5.2);
+    counter.castShadow = true;
+    counter.receiveShadow = true;
+    scene.add(counter);
+    addCollider(-2.6, -5.2, 5.5, 1.1);
+
+    const stoveBase = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 0.04, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.3 })
+    );
+    stoveBase.position.set(-4.2, 0.96, -5.2);
+    scene.add(stoveBase);
+
+    const potMat = new THREE.MeshStandardMaterial({ color: 0x8a8e91, roughness: 0.35, metalness: 0.7 });
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.24, 0.28, 24), potMat);
+    pot.position.set(-4.2, 1.12, -5.2);
+    pot.castShadow = true;
+    scene.add(pot);
+    registerInteractable(pot, 'stove', 'Saucepan', onInteractStove);
+
+    const oilBowl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.16, 0.14, 20),
+        new THREE.MeshStandardMaterial({ color: 0x242424, roughness: 0.4 })
+    );
+    oilBowl.position.set(-2.6, 1.02, -5.1);
+    oilBowl.castShadow = true;
+    scene.add(oilBowl);
+
+    const oilLiquid = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.19, 0.19, 0.02, 16),
+        new THREE.MeshStandardMaterial({ color: 0x756324, roughness: 0.15, metalness: 0.25 })
+    );
+    oilLiquid.position.set(-2.6, 1.07, -5.1);
+    scene.add(oilLiquid);
+    registerInteractable(oilBowl, 'oil', 'Bowl of Oil', onInteractOil);
+
+    const paintGroup = new THREE.Group();
+    const canMatRed = new THREE.MeshStandardMaterial({ color: 0x9e2a22, roughness: 0.35, metalness: 0.35 });
+    const canMatWhite = new THREE.MeshStandardMaterial({ color: 0xc7c4bc, roughness: 0.35, metalness: 0.35 });
+    const can1 = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.28, 16), canMatRed);
+    can1.position.set(-0.15, 0, 0);
+    const can2 = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.24, 16), canMatWhite);
+    can2.position.set(0.15, -0.02, 0.08);
+    paintGroup.add(can1, can2);
+    paintGroup.position.set(-1.1, 1.09, -5.1);
+    scene.add(paintGroup);
+
+    const paintHitbox = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.4, 0.5),
+        new THREE.MeshBasicMaterial({ visible: false })
+    );
+    paintHitbox.position.copy(paintGroup.position);
+    scene.add(paintHitbox);
+    registerInteractable(paintHitbox, 'paint', 'Leftover Paint', onInteractPaint);
+
+    const sofaMat = new THREE.MeshStandardMaterial({ color: 0x2f3a3d, roughness: 0.85 });
+    const sofaGroup = new THREE.Group();
+    const sofaSeat = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, 2.8), sofaMat);
+    sofaSeat.position.set(0, 0.225, 0);
+    const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.9, 2.8), sofaMat);
+    sofaBack.position.set(-0.42, 0.45, 0);
+    sofaGroup.add(sofaSeat, sofaBack);
+    sofaGroup.position.set(2.4, 0, 0.5);
+    sofaGroup.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    scene.add(sofaGroup);
+    addCollider(2.4, 0.5, 1.1, 2.8);
+
+    const tvStand = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 2.2), darkWoodMat);
+    tvStand.position.set(5.3, 0.275, 0.5);
+    tvStand.castShadow = true;
+    scene.add(tvStand);
+    addCollider(5.3, 0.5, 0.7, 2.2);
+
+    const tvFrame = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 1.1, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.4 })
+    );
+    tvFrame.position.set(5.3, 1.2, 0.5);
+    scene.add(tvFrame);
+
+    tvMaterial = new THREE.MeshBasicMaterial({ color: 0x768c9e });
+    const tvScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.68, 0.98), tvMaterial);
+    tvScreen.rotation.y = -Math.PI / 2;
+    tvScreen.position.set(5.23, 1.2, 0.5);
+    scene.add(tvScreen);
+    registerInteractable(tvFrame, 'tv', 'Television', onInteractTV);
+
+    tvLight = new THREE.PointLight(0x768c9e, 0.35, 4.5);
+    tvLight.position.set(4.5, 1.4, 0.5);
+    scene.add(tvLight);
+
+    const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.45, 3.2), darkWoodMat);
+    bedFrame.position.set(-2.5, 0.225, -11.2);
+    bedFrame.castShadow = true;
+    bedFrame.receiveShadow = true;
+    scene.add(bedFrame);
+
+    const mattress = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 0.35, 3.0),
+        new THREE.MeshStandardMaterial({ color: 0x9e998e, roughness: 0.8 })
+    );
+    mattress.position.set(-2.5, 0.6, -11.2);
+    scene.add(mattress);
+
+    const headboard = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.4, 0.2), darkWoodMat);
+    headboard.position.set(-2.5, 0.7, -12.7);
+    scene.add(headboard);
+    addCollider(-2.5, -11.2, 2.8, 3.2);
+
+    const wifeGroup = new THREE.Group();
+    const blanketMat = new THREE.MeshStandardMaterial({ color: 0x787267, roughness: 0.9 });
+    const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 1.65, 16), blanketMat);
+    bodyMesh.rotation.x = Math.PI / 2;
+    bodyMesh.scale.set(1.2, 1, 0.65);
+    bodyMesh.position.set(0, 0.1, 0.25);
+
+    const headMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.19, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0xb89c86, roughness: 0.65 })
+    );
+    headMesh.position.set(0, 0.14, -0.78);
+
+    const hairMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.20, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x24180e, roughness: 0.9 })
+    );
+    hairMesh.position.set(-0.03, 0.17, -0.82);
+
+    wifeGroup.add(bodyMesh, headMesh, hairMesh);
+    wifeGroup.position.set(-2.5, 0.78, -11.2);
+    scene.add(wifeGroup);
+
+    const wifeHitbox = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4, 0.8, 2.4),
+        new THREE.MeshBasicMaterial({ visible: false })
+    );
+    wifeHitbox.position.set(-2.5, 1.0, -11.2);
+    scene.add(wifeHitbox);
+    registerInteractable(wifeHitbox, 'wife', 'Your Wife', onInteractWife);
+
+    const mirrorFrame = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 2.2, 1.4),
+        new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.4 })
+    );
+    mirrorFrame.position.set(5.8, 1.8, -10.5);
+    scene.add(mirrorFrame);
+
+    const mirrorSurface = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.26, 2.06),
+        new THREE.MeshStandardMaterial({ color: 0x7e878c, roughness: 0.1, metalness: 0.85 })
+    );
+    mirrorSurface.rotation.y = -Math.PI / 2;
+    mirrorSurface.position.set(5.74, 1.8, -10.5);
+    scene.add(mirrorSurface);
+    registerInteractable(mirrorFrame, 'mirror', 'Mirror', onInteractMirror);
+
+    const nightstand = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.65, 0.8), darkWoodMat);
+    nightstand.position.set(1.5, 0.325, -13.2);
+    nightstand.castShadow = true;
+    scene.add(nightstand);
+    addCollider(1.5, -13.2, 0.8, 0.8);
+
+    const lampShade = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.26, 0.35, 16),
+        new THREE.MeshStandardMaterial({ color: 0xd4be94, emissive: 0xa68953, emissiveIntensity: 0.35 })
+    );
+    lampShade.position.set(1.5, 0.95, -13.2);
+    scene.add(lampShade);
+    registerInteractable(lampShade, 'both', 'Bedside Lamp', onInteractBoth);
+}
+
+function onInteractGun(hitbox) {
+    if (gameState === 0) {
+        playSound('pickup');
+        tableGunGroup.visible = false;
+        hitbox.position.y = -100;
+        handGunGroup.visible = true;
+        gameState = 1;
+        showSubtitle("There's a revolver sitting next to the fruit bowl. No note, no dramatic backstory. It's just there because otherwise you'd be staring at an empty table. It's rusted shut, obviously.");
+        setObjective("Task: Get your dinner from the stove");
+    }
+}
+
+function onInteractStove() {
+    if (gameState === 0) {
+        playSound('interact');
+        showSubtitle("Lukewarm stew. Go check the dining table first, you missed the only interesting thing in the room.");
+    } else if (gameState === 1) {
+        playSound('interact');
+        gameState = 2;
+        const foodMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.14, 0.14, 0.04, 16),
+            new THREE.MeshStandardMaterial({ color: 0x8f6f46, roughness: 0.7 })
+        );
+        foodMesh.position.set(-2.5, 0.93, 1.6);
+        scene.add(foodMesh);
+        plateMesh.userData.label = "Plate of Stew";
+        showSubtitle("You slop some food onto the plate. You aren't even hungry, it's just 8:30 and that's what people do at 8:30.");
+        setObjective("Task: Dunk the rusted gun in the oil bowl on the counter");
+    } else {
+        playSound('interact');
+        showSubtitle("You already served yourself. Stop clicking the pot.");
+    }
+}
+
+function onInteractOil() {
+    if (gameState < 2) {
+        playSound('interact');
+        showSubtitle("A bowl of oil sitting on the kitchen counter. Don't skip ahead, follow your little chore list.");
+    } else if (gameState === 2) {
+        playSound('oil');
+        gameState = 3;
+        const steelMat = new THREE.MeshStandardMaterial({
+            color: 0xadb3ba,
+            roughness: 0.25,
+            metalness: 0.85
+        });
+        gunParts.forEach(part => { part.material = steelMat; });
+        showSubtitle("You soak the revolver in oil until the cylinder turns. Good job. You fixed a gun in your kitchen. Feel like a man of action yet?");
+        setObjective("Task: Paint the gun with the cans on the counter");
+    } else {
+        playSound('interact');
+        showSubtitle("Dirty oil. You're done with it.");
+    }
+}
+
+function onInteractPaint() {
+    if (gameState < 3) {
+        playSound('interact');
+        showSubtitle("Leftover paint from when you thought redecorating would make you like living here.");
+    } else if (gameState === 3) {
+        playSound('paint');
+        gameState = 4;
+        const popMat = new THREE.MeshStandardMaterial({
+            map: createPopArtTexture(),
+            roughness: 0.35,
+            metalness: 0.15
+        });
+        gunParts.forEach(part => { part.material = popMat; });
+        showSubtitle("Red with white polka dots. Cute. If you paint it like a clown toy, maybe you can pretend you're doing an art project instead of holding a firearm.");
+        setObjective("Task: Eat your dinner at the table");
+    } else {
+        playSound('interact');
+        showSubtitle("One coat of polka dots is plenty.");
+    }
+}
+
+function onInteractPlate() {
+    if (gameState < 4) {
+        playSound('interact');
+        showSubtitle("An empty plate. Very compelling.");
+    } else if (gameState === 4) {
+        playSound('interact');
+        gameState = 5;
+        plateMesh.visible = false;
+        showSubtitle("You chew and swallow. Tastes like salt and routine. The polka-dot gun sits next to your elbow the whole time.");
+        setObjective("Task: Watch television");
+    } else {
+        showSubtitle("You already ate.");
+    }
+}
+
+function onInteractTV() {
+    if (gameState < 5) {
+        playSound('interact');
+        showSubtitle("It's on mute. You don't care what they're saying anyway.");
+    } else if (gameState === 5) {
+        playSound('interact');
+        gameState = 6;
+        showSubtitle("You stare at the flashing box for twenty minutes. Nothing registers. Well, you're out of chores. Go to the bedroom and wrap this up.");
+        setObjective("Task: Go to the bedroom and use the gun (Wife / Mirror / Lamp)");
+        updateFinalLabels();
+    } else {
+        playSound('interact');
+        showSubtitle("Still flashing. Go to the bedroom.");
+    }
+}
+
+function updateFinalLabels() {
+    interactables.forEach(obj => {
+        if (obj.userData.id === 'wife') obj.userData.label = "[Click] Shoot Her";
+        if (obj.userData.id === 'mirror') obj.userData.label = "[Click] Shoot Yourself";
+        if (obj.userData.id === 'both') obj.userData.label = "[Click] Shoot Both";
+    });
+}
+
+function onInteractWife() {
+    if (gameState < 6) {
+        playSound('interact');
+        showSubtitle("Your wife. Knocked out on sleeping pills, or just pretending so she doesn't have to make small talk with you. Can't blame her.");
+    } else {
+        triggerEnding('wife');
+    }
+}
+
+function onInteractMirror() {
+    if (gameState < 6) {
+        playSound('interact');
+        showSubtitle("Look at yourself. Fed, employed, insured, and completely dead behind the eyes.");
+    } else {
+        triggerEnding('self');
+    }
+}
+
+function onInteractBoth() {
+    if (gameState < 6) {
+        playSound('interact');
+        showSubtitle("A cheap lamp lighting up a dead bedroom.");
+    } else {
+        triggerEnding('both');
+    }
+}
+
+function triggerEnding(choice) {
+    if (gameEnded) return;
+    gameEnded = true;
+    playSound('gunshot');
+
+    if (choice === 'both') {
+        setTimeout(() => playSound('gunshot'), 850);
+    }
+
+    document.exitPointerLock();
+
+    if (choice === 'wife') {
+        endingChoiceTitle.textContent = "Ending 1: Her";
+        endingSpecific.textContent = "You shot your sleeping wife with a polka-dot revolver. Why? She didn't do anything to you. She was just lying there, a permanent reminder that you're supposed to be a normal husband in a normal house. Now the room is quiet, and you're still bored.";
+    } else if (choice === 'self') {
+        endingChoiceTitle.textContent = "Ending 2: Yourself";
+        endingSpecific.textContent = "You pointed the clown-painted barrel at the mirror and clocked out for good. She'll wake up tomorrow, find the mess, and probably be more annoyed than shocked. At least you won't have to eat lukewarm stew tomorrow night.";
+    } else {
+        endingChoiceTitle.textContent = "Ending 3: Both of You";
+        endingSpecific.textContent = "Two shots. First the bed, then the mirror. Thorough, aren't you? You cleared the whole board just to make sure nobody had to wake up in this apartment tomorrow morning.";
+    }
+
+    endingScreen.style.display = 'flex';
+    requestAnimationFrame(() => {
+        endingScreen.style.opacity = '1';
+    });
+}
+
+function checkCollision(x, z) {
+    if (x < -5.5 || x > 5.5 || z > 5.5 || z < -13.5) return true;
+    for (const c of colliders) {
+        if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const raycaster = new THREE.Raycaster();
+
+function updateInteraction() {
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const intersects = raycaster.intersectObjects(interactables, false);
+
+    if (intersects.length > 0 && intersects[0].distance < 3.2) {
+        currentIntersect = intersects[0].object;
+        crosshairEl.classList.add('active');
+        promptEl.textContent = currentIntersect.userData.label;
+        promptEl.style.opacity = '1';
+    } else {
+        currentIntersect = null;
+        crosshairEl.classList.remove('active');
+        promptEl.style.opacity = '0';
+    }
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    if (gameEnded) return;
+
+    const time = performance.now();
+    const delta = Math.min((time - prevTime) / 1000, 0.1);
+    prevTime = time;
+
+    if (tvMaterial && Math.random() < 0.08) {
+        const l = 0.45 + Math.random() * 0.2;
+        tvMaterial.color.setHSL(0.57, 0.2, l);
+        tvLight.color.copy(tvMaterial.color);
+    }
+
+    if (isLocked) {
+        velocity.x -= velocity.x * 10.0 * delta;
+        velocity.z -= velocity.z * 10.0 * delta;
+
+        direction.z = Number(moveForward) - Number(moveBackward);
+        direction.x = Number(moveRight) - Number(moveLeft);
+        direction.normalize();
+
+        const speed = 28.0;
+        if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
+        if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
+
+        const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+
+        const moveX = (forward.x * -velocity.z + right.x * -velocity.x) * delta;
+        const moveZ = (forward.z * -velocity.z + right.z * -velocity.x) * delta;
+
+        if (!checkCollision(camera.position.x + moveX, camera.position.z)) {
+            camera.position.x += moveX;
+        }
+        if (!checkCollision(camera.position.x, camera.position.z + moveZ)) {
+            camera.position.z += moveZ;
+        }
+
+        const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+        if (isMoving) {
+            stepTimer += delta;
+            if (stepTimer > 0.48) {
+                playSound('step');
+                stepTimer = 0;
+            }
+            if (handGunGroup && handGunGroup.visible) {
+                handGunGroup.position.y = -0.24 + Math.sin(time * 0.008) * 0.012;
+                handGunGroup.position.x = 0.28 + Math.cos(time * 0.004) * 0.008;
+            }
+        }
+
+        updateInteraction();
+    }
+
+    renderer.render(scene, camera);
+}
+
+startBtn.addEventListener('click', () => {
+    initAudio();
+    document.body.requestPointerLock();
+    if (gameState === 0) {
+        showSubtitle("Here we go. Another evening in the box. Walk over to the dining table so we can get this started.");
+    }
+});
+
+document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === document.body) {
+        isLocked = true;
+        overlayEl.style.display = 'none';
+    } else if (!gameEnded) {
+        isLocked = false;
+        overlayEl.style.display = 'flex';
+        startBtn.textContent = 'Back to It';
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isLocked || gameEnded) return;
+    const sensitivity = 0.002;
+    yaw -= e.movementX * sensitivity;
+    pitch -= e.movementY * sensitivity;
+    pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+});
+
+document.addEventListener('mousedown', (e) => {
+    if (!isLocked || gameEnded || e.button !== 0) return;
+    if (currentIntersect && currentIntersect.userData.callback) {
+        currentIntersect.userData.callback();
+        if (handGunGroup && handGunGroup.visible) {
+            handGunGroup.position.z = -0.38;
+            setTimeout(() => { if (handGunGroup) handGunGroup.position.z = -0.45; }, 120);
+        }
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    switch (e.code) {
+        case 'KeyW': case 'ArrowUp': moveForward = true; break;
+        case 'KeyS': case 'ArrowDown': moveBackward = true; break;
+        case 'KeyA': case 'ArrowLeft': moveLeft = true; break;
+        case 'KeyD': case 'ArrowRight': moveRight = true; break;
+        case 'KeyE':
+            if (isLocked && !gameEnded && currentIntersect && currentIntersect.userData.callback) {
+                currentIntersect.userData.callback();
+            }
+            break;
+    }
+});
+
+document.addEventListener('keyup', (e) => {
+    switch (e.code) {
+        case 'KeyW': case 'ArrowUp': moveForward = false; break;
+        case 'KeyS': case 'ArrowDown': moveBackward = false; break;
+        case 'KeyA': case 'ArrowLeft': moveLeft = false; break;
+        case 'KeyD': case 'ArrowRight': moveRight = false; break;
+    }
+});
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+initScene();
+animate();
+</script>
+</body>
+</html>
